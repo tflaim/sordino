@@ -1,8 +1,11 @@
 import { useEffect, useState, useRef } from 'react'
 import { getSettings, saveSettings, subscribeToSettings } from '../shared/storage'
 import type { SordinoSettings, Schedule, Category, DayOfWeek } from '../shared/types'
+import { TEMPLATE_SCHEDULE_IDS } from '../shared/types'
 import { cn } from '../shared/utils'
-import { Plus, Trash2, X, Check, ChevronDown } from 'lucide-react'
+import { Plus, Trash2, X, Check, ChevronDown, RefreshCw, BarChart3 } from 'lucide-react'
+
+const MAX_QUICK_BYPASSES = 3
 
 const DAYS: { key: DayOfWeek; label: string; short: string }[] = [
   { key: 'mon', label: 'Monday', short: 'M' },
@@ -60,11 +63,15 @@ function App() {
         {/* Schedules Section */}
         <section className="mb-10">
           <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Schedules</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Template schedules can be toggled on/off. Create custom schedules for full control.
+          </p>
           <div className="space-y-3">
             {settings.schedules.map((schedule) => (
               <ScheduleCard
                 key={schedule.id}
                 schedule={schedule}
+                isTemplate={TEMPLATE_SCHEDULE_IDS.includes(schedule.id)}
                 onToggle={() => {
                   updateSettings((s) => ({
                     ...s,
@@ -175,6 +182,24 @@ function App() {
             />
           </div>
         </section>
+
+        {/* Divider */}
+        <div className="border-t border-border mb-10" />
+
+        {/* Bypass Settings Section */}
+        <section className="mb-10">
+          <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Bypass Settings</h2>
+          <BypassSettings settings={settings} />
+        </section>
+
+        {/* Divider */}
+        <div className="border-t border-border mb-10" />
+
+        {/* Weekly Stats Section */}
+        <section className="mb-10">
+          <h2 className="font-serif text-xl font-medium mb-4 text-foreground">This Week</h2>
+          <WeeklyStatsChart settings={settings} />
+        </section>
       </div>
     </div>
   )
@@ -182,11 +207,13 @@ function App() {
 
 function ScheduleCard({
   schedule,
+  isTemplate = false,
   onToggle,
   onUpdate,
   onDelete,
 }: {
   schedule: Schedule
+  isTemplate?: boolean
   onToggle: () => void
   onUpdate: (schedule: Schedule) => void
   onDelete: () => void
@@ -321,20 +348,25 @@ function ScheduleCard({
             </p>
           </div>
         </div>
-        <div className="flex gap-1">
-          <button
-            onClick={() => setIsEditing(true)}
-            className="px-2 py-1 rounded text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150 ease-out"
-          >
-            Edit
-          </button>
-          <button
-            onClick={onDelete}
-            className="p-1 rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-colors duration-150 ease-out"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
+        {!isTemplate && (
+          <div className="flex gap-1">
+            <button
+              onClick={() => setIsEditing(true)}
+              className="px-2 py-1 rounded text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150 ease-out"
+            >
+              Edit
+            </button>
+            <button
+              onClick={onDelete}
+              className="p-1 rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-colors duration-150 ease-out"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+        {isTemplate && (
+          <span className="text-xs text-muted-foreground/60 px-2 py-1">Template</span>
+        )}
       </div>
     </div>
   )
@@ -614,6 +646,220 @@ function AddSiteInput({ onAdd, existingSites }: { onAdd: (site: string) => void;
         </button>
       </div>
       {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+    </div>
+  )
+}
+
+function BypassSettings({ settings }: { settings: SordinoSettings }) {
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [refreshResult, setRefreshResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  const bypassesUsed = settings.bypassState.quickBypassesUsed
+  const bypassesRemaining = MAX_QUICK_BYPASSES - bypassesUsed
+
+  // Check if emergency refresh was used this week
+  const canRefresh = () => {
+    if (!settings.bypassState.lastEmergencyRefresh) return true
+    const lastRefresh = new Date(settings.bypassState.lastEmergencyRefresh)
+    const now = new Date()
+    const day = now.getDay()
+    const mondayOffset = day === 0 ? -6 : 1 - day
+    const monday = new Date(now)
+    monday.setDate(now.getDate() + mondayOffset)
+    monday.setHours(0, 0, 0, 0)
+    return lastRefresh < monday
+  }
+
+  const handleEmergencyRefresh = async () => {
+    if (!canRefresh()) {
+      setRefreshResult({ success: false, message: 'Emergency refresh already used this week' })
+      return
+    }
+
+    setIsRefreshing(true)
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'EMERGENCY_REFRESH_BYPASSES' })
+      if (response.success) {
+        setRefreshResult({ success: true, message: 'Bypasses refreshed! Use wisely.' })
+      } else {
+        setRefreshResult({ success: false, message: response.reason || 'Failed to refresh' })
+      }
+    } catch (error) {
+      setRefreshResult({ success: false, message: 'Failed to refresh bypasses' })
+    }
+    setIsRefreshing(false)
+
+    // Clear message after 3 seconds
+    setTimeout(() => setRefreshResult(null), 3000)
+  }
+
+  const refreshAvailable = canRefresh()
+
+  return (
+    <div className="space-y-4">
+      {/* Current Status */}
+      <div className="rounded-xl border border-border bg-secondary/30 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="font-medium">Daily Bypasses</p>
+            <p className="text-sm text-muted-foreground">
+              {bypassesRemaining} of {MAX_QUICK_BYPASSES} remaining today
+            </p>
+          </div>
+          <div className="text-2xl font-serif font-semibold text-primary">
+            {bypassesRemaining}/{MAX_QUICK_BYPASSES}
+          </div>
+        </div>
+        <div className="h-2 bg-secondary rounded-full overflow-hidden">
+          <div
+            className="h-full bg-primary transition-all duration-300"
+            style={{ width: `${(bypassesRemaining / MAX_QUICK_BYPASSES) * 100}%` }}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">Resets daily at midnight</p>
+      </div>
+
+      {/* Emergency Refresh */}
+      <div className={cn(
+        "rounded-xl border p-4",
+        refreshAvailable
+          ? "border-border bg-secondary/30"
+          : "border-border/50 bg-secondary/10 opacity-60"
+      )}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <p className="font-medium">Emergency Refresh</p>
+            <p className="text-sm text-muted-foreground">
+              {refreshAvailable
+                ? 'Reset your daily bypasses once per week when you really need them.'
+                : 'Already used this week. Resets next Monday.'}
+            </p>
+          </div>
+          <button
+            onClick={handleEmergencyRefresh}
+            disabled={!refreshAvailable || isRefreshing}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150",
+              refreshAvailable
+                ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                : "bg-secondary text-muted-foreground cursor-not-allowed"
+            )}
+          >
+            <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
+            Refresh
+          </button>
+        </div>
+        {refreshResult && (
+          <p className={cn(
+            "text-sm mt-3",
+            refreshResult.success ? "text-green-500" : "text-destructive"
+          )}>
+            {refreshResult.message}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function WeeklyStatsChart({ settings }: { settings: SordinoSettings }) {
+  const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+  // Build stats for the current week
+  const getWeekData = () => {
+    const today = new Date()
+    const day = today.getDay()
+    const mondayOffset = day === 0 ? -6 : 1 - day
+    const monday = new Date(today)
+    monday.setDate(today.getDate() + mondayOffset)
+    monday.setHours(0, 0, 0, 0)
+
+    const weekData = DAYS_OF_WEEK.map((dayName, index) => {
+      const date = new Date(monday)
+      date.setDate(monday.getDate() + index)
+      const dateStr = date.toISOString().split('T')[0]
+
+      // Check if it's today
+      const isToday = dateStr === settings.stats.date
+
+      // Find stats for this day
+      let dayStats = settings.weeklyStats.days.find(d => d.date === dateStr)
+
+      // If it's today, use current stats
+      if (isToday) {
+        dayStats = {
+          date: dateStr,
+          blocksTriggered: settings.stats.blocksTriggered,
+          bypassesUsed: settings.stats.bypassesUsed
+        }
+      }
+
+      return {
+        day: dayName,
+        date: dateStr,
+        blocks: dayStats?.blocksTriggered ?? 0,
+        bypasses: dayStats?.bypassesUsed ?? 0,
+        isToday,
+        isFuture: date > today
+      }
+    })
+
+    return weekData
+  }
+
+  const weekData = getWeekData()
+  const maxBlocks = Math.max(...weekData.map(d => d.blocks), 1)
+  const totalBlocks = weekData.reduce((sum, d) => sum + d.blocks, 0)
+  const totalBypasses = weekData.reduce((sum, d) => sum + d.bypasses, 0)
+
+  return (
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="rounded-xl border border-border bg-secondary/30 p-4 text-center">
+          <p className="text-3xl font-serif font-semibold text-foreground">{totalBlocks}</p>
+          <p className="text-sm text-muted-foreground">Sites Blocked</p>
+        </div>
+        <div className="rounded-xl border border-border bg-secondary/30 p-4 text-center">
+          <p className="text-3xl font-serif font-semibold text-foreground">{totalBypasses}</p>
+          <p className="text-sm text-muted-foreground">Bypasses Used</p>
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="rounded-xl border border-border bg-secondary/30 p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <BarChart3 className="w-4 h-4 text-muted-foreground" />
+          <p className="text-sm font-medium text-muted-foreground">Daily Blocks</p>
+        </div>
+        <div className="flex items-end gap-2 h-24">
+          {weekData.map((day) => (
+            <div key={day.day} className="flex-1 flex flex-col items-center gap-1">
+              <div className="w-full flex flex-col items-center justify-end h-16">
+                {day.blocks > 0 && (
+                  <span className="text-xs text-muted-foreground mb-1">{day.blocks}</span>
+                )}
+                <div
+                  className={cn(
+                    "w-full rounded-t transition-all duration-300",
+                    day.isToday ? "bg-primary" : "bg-primary/50",
+                    day.isFuture && "bg-secondary"
+                  )}
+                  style={{
+                    height: day.isFuture ? '4px' : `${Math.max((day.blocks / maxBlocks) * 100, day.blocks > 0 ? 10 : 4)}%`
+                  }}
+                />
+              </div>
+              <span className={cn(
+                "text-xs",
+                day.isToday ? "font-medium text-primary" : "text-muted-foreground"
+              )}>
+                {day.day}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

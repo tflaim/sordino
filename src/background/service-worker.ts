@@ -10,12 +10,12 @@ const BYPASS_DURATION_MS = 5 * 60 * 1000 // 5 minutes
 const countedBlockUrls = new Set<string>()
 
 // Update extension icon badge to reflect blocking state
-type BadgeState = 'active' | 'paused' | 'inactive'
+type BadgeState = 'active' | 'paused' | 'inactive' | 'bypass'
 
 async function updateBadge(state: BadgeState): Promise<void> {
   switch (state) {
     case 'active':
-      // Small green dot when blocking is active
+      // Small green square when blocking is active
       await chrome.action.setBadgeText({ text: ' ' })
       await chrome.action.setBadgeBackgroundColor({ color: '#22c55e' }) // green-500
       break
@@ -25,18 +25,29 @@ async function updateBadge(state: BadgeState): Promise<void> {
       await chrome.action.setBadgeBackgroundColor({ color: '#eab308' }) // yellow-500
       break
     case 'inactive':
-      // Small grey dot when inactive
+      // Small grey square when inactive
       await chrome.action.setBadgeText({ text: ' ' })
       await chrome.action.setBadgeBackgroundColor({ color: '#6b7280' }) // gray-500
+      break
+    case 'bypass':
+      // Timer symbol when bypass is active
+      await chrome.action.setBadgeText({ text: '⏱' })
+      await chrome.action.setBadgeBackgroundColor({ color: '#f97316' }) // orange-500
       break
   }
 }
 
 // Determine badge state from settings
 function getBadgeState(settings: SordinoSettings): BadgeState {
+  // Check for active bypass first (highest priority - time sensitive)
+  const bypass = settings.bypassState.activeBypass
+  if (bypass && Date.now() < bypass.expiresAt) return 'bypass'
+
+  // Then check for paused
   const isPaused = settings.blockState.pausedUntil && Date.now() < settings.blockState.pausedUntil
   if (isPaused) return 'paused'
 
+  // Then check blocking status
   const blockStatus = shouldBlock(settings)
   return blockStatus.shouldBlock ? 'active' : 'inactive'
 }
@@ -71,16 +82,58 @@ function isUrlBlocked(url: string, settings: SordinoSettings): boolean {
   }
 }
 
+// Get Monday of a given date's week
+function getWeekStart(date: Date = new Date()): string {
+  const d = new Date(date)
+  const day = d.getDay()
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+  d.setDate(diff)
+  return d.toISOString().split('T')[0]
+}
+
+// Check if emergency refresh is available (once per week)
+function canEmergencyRefresh(settings: SordinoSettings): boolean {
+  if (!settings.bypassState.lastEmergencyRefresh) return true
+  const lastRefresh = new Date(settings.bypassState.lastEmergencyRefresh)
+  const currentWeekStart = getWeekStart()
+  const lastRefreshWeekStart = getWeekStart(lastRefresh)
+  return currentWeekStart !== lastRefreshWeekStart
+}
+
 // Check and reset bypass state if new day
 async function checkBypassReset(): Promise<SordinoSettings> {
   const today = new Date().toISOString().split('T')[0]
+  const currentWeekStart = getWeekStart()
+
   return updateSettings((settings) => {
+    let updated = { ...settings }
+
+    // Check if we need to archive yesterday's stats to weekly
     if (settings.bypassState.lastResetDate !== today) {
+      // Archive previous day's stats to weekly
+      const prevStats = settings.stats
+      let weeklyStats = { ...settings.weeklyStats }
+
+      // If it's a new week, reset weekly stats
+      if (weeklyStats.weekStart !== currentWeekStart) {
+        weeklyStats = { weekStart: currentWeekStart, days: [] }
+      }
+
+      // Add previous day to weekly stats (if it had any activity)
+      if (prevStats.blocksTriggered > 0 || prevStats.bypassesUsed > 0) {
+        weeklyStats.days = [
+          ...weeklyStats.days.filter(d => d.date !== prevStats.date),
+          { date: prevStats.date, blocksTriggered: prevStats.blocksTriggered, bypassesUsed: prevStats.bypassesUsed }
+        ].slice(-7) // Keep only last 7 days
+      }
+
       // Clear counted URLs on new day
       countedBlockUrls.clear()
-      return {
-        ...settings,
+
+      updated = {
+        ...updated,
         bypassState: {
+          ...settings.bypassState,
           quickBypassesUsed: 0,
           lastResetDate: today,
           activeBypass: null,
@@ -90,9 +143,11 @@ async function checkBypassReset(): Promise<SordinoSettings> {
           blocksTriggered: 0,
           bypassesUsed: 0,
         },
+        weeklyStats,
       }
     }
-    return settings
+
+    return updated
   })
 }
 
@@ -186,7 +241,7 @@ async function handleMessage(message: MessageType): Promise<unknown> {
       // Remove site from counted blocks (allows re-counting if they come back)
       countedBlockUrls.delete(site)
 
-      await updateSettings((s) => ({
+      const updated = await updateSettings((s) => ({
         ...s,
         bypassState: {
           ...s.bypassState,
@@ -201,6 +256,7 @@ async function handleMessage(message: MessageType): Promise<unknown> {
           bypassesUsed: s.stats.bypassesUsed + 1,
         },
       }))
+      await updateBadge(getBadgeState(updated))
 
       return { success: true, remaining: remaining - 1 }
     }
@@ -234,6 +290,23 @@ async function handleMessage(message: MessageType): Promise<unknown> {
       return { success: true }
     }
 
+    case 'EMERGENCY_REFRESH_BYPASSES': {
+      if (!canEmergencyRefresh(settings)) {
+        return { success: false, reason: 'Already used this week' }
+      }
+
+      const today = new Date().toISOString().split('T')[0]
+      await updateSettings((s) => ({
+        ...s,
+        bypassState: {
+          ...s.bypassState,
+          quickBypassesUsed: 0,
+          lastEmergencyRefresh: today,
+        },
+      }))
+      return { success: true, remaining: MAX_QUICK_BYPASSES }
+    }
+
     default:
       return { error: 'Unknown message type' }
   }
@@ -243,11 +316,46 @@ async function handleMessage(message: MessageType): Promise<unknown> {
 chrome.alarms.create('checkSchedule', { periodInMinutes: 1 })
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === 'checkSchedule') {
+  try {
+    if (alarm.name === 'checkSchedule') {
+      const settings = await checkBypassReset()
+      const blockStatus = shouldBlock(settings)
+
+      // Update block state and badge
+      const updated = await updateSettings((s) => ({
+        ...s,
+        blockState: {
+          ...s.blockState,
+          isBlocking: blockStatus.shouldBlock,
+          activeSchedule: blockStatus.reason ?? null,
+        },
+      }))
+      await updateBadge(getBadgeState(updated))
+
+      // Clear expired bypasses
+      if (settings.bypassState.activeBypass) {
+        if (Date.now() > settings.bypassState.activeBypass.expiresAt) {
+          await updateSettings((s) => ({
+            ...s,
+            bypassState: {
+              ...s.bypassState,
+              activeBypass: null,
+            },
+          }))
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Sordino: Error in alarm handler', error)
+  }
+})
+
+// Initialize on install
+chrome.runtime.onInstalled.addListener(async () => {
+  try {
     const settings = await checkBypassReset()
     const blockStatus = shouldBlock(settings)
 
-    // Update block state and badge
     const updated = await updateSettings((s) => ({
       ...s,
       blockState: {
@@ -257,42 +365,19 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       },
     }))
     await updateBadge(getBadgeState(updated))
-
-    // Clear expired bypasses
-    if (settings.bypassState.activeBypass) {
-      if (Date.now() > settings.bypassState.activeBypass.expiresAt) {
-        await updateSettings((s) => ({
-          ...s,
-          bypassState: {
-            ...s.bypassState,
-            activeBypass: null,
-          },
-        }))
-      }
-    }
+  } catch (error) {
+    console.error('Sordino: Error in onInstalled handler', error)
   }
-})
-
-// Initialize on install
-chrome.runtime.onInstalled.addListener(async () => {
-  const settings = await checkBypassReset()
-  const blockStatus = shouldBlock(settings)
-
-  const updated = await updateSettings((s) => ({
-    ...s,
-    blockState: {
-      ...s.blockState,
-      isBlocking: blockStatus.shouldBlock,
-      activeSchedule: blockStatus.reason ?? null,
-    },
-  }))
-  await updateBadge(getBadgeState(updated))
 })
 
 // Initialize badge on service worker start (handles browser restart)
 ;(async () => {
-  const settings = await getSettings()
-  await updateBadge(getBadgeState(settings))
+  try {
+    const settings = await getSettings()
+    await updateBadge(getBadgeState(settings))
+  } catch (error) {
+    console.error('Sordino: Error initializing badge', error)
+  }
 })()
 
 console.log('Sordino background service worker initialized')

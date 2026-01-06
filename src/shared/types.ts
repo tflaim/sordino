@@ -30,6 +30,16 @@ export interface BypassState {
     site: string
     expiresAt: number // timestamp
   } | null
+  lastEmergencyRefresh: string | null // "2026-01-06" format - tracks weekly refresh
+}
+
+export interface WeeklyStats {
+  weekStart: string // "2026-01-06" - Monday of the week
+  days: {
+    date: string
+    blocksTriggered: number
+    bypassesUsed: number
+  }[]
 }
 
 export interface Stats {
@@ -45,6 +55,7 @@ export interface SordinoSettings {
   blockState: BlockState
   bypassState: BypassState
   stats: Stats
+  weeklyStats: WeeklyStats
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [
@@ -125,6 +136,15 @@ export const DEFAULT_SCHEDULES: Schedule[] = [
   },
 ]
 
+// Get Monday of the current week
+function getWeekStart(): string {
+  const now = new Date()
+  const day = now.getDay()
+  const diff = now.getDate() - day + (day === 0 ? -6 : 1) // Adjust for Sunday
+  const monday = new Date(now.setDate(diff))
+  return monday.toISOString().split('T')[0]
+}
+
 export const DEFAULT_SETTINGS: SordinoSettings = {
   schedules: DEFAULT_SCHEDULES,
   categories: DEFAULT_CATEGORIES,
@@ -139,13 +159,21 @@ export const DEFAULT_SETTINGS: SordinoSettings = {
     quickBypassesUsed: 0,
     lastResetDate: new Date().toISOString().split('T')[0],
     activeBypass: null,
+    lastEmergencyRefresh: null,
   },
   stats: {
     date: new Date().toISOString().split('T')[0],
     blocksTriggered: 0,
     bypassesUsed: 0,
   },
+  weeklyStats: {
+    weekStart: getWeekStart(),
+    days: [],
+  },
 }
+
+// Template schedule IDs that cannot be edited or deleted
+export const TEMPLATE_SCHEDULE_IDS = ['work-hours', 'extended-work', 'evenings', 'always-on']
 
 // Message types for communication between components
 export type MessageType =
@@ -158,3 +186,4 @@ export type MessageType =
   | { type: 'RECORD_BLOCK' }
   | { type: 'TOGGLE_MANUAL_OVERRIDE'; state: 'on' | 'off' | null }
   | { type: 'PAUSE_BLOCKING'; until: number }
+  | { type: 'EMERGENCY_REFRESH_BYPASSES' }

@@ -3,11 +3,11 @@ import { getSettings, subscribeToSettings } from '../shared/storage'
 import { shouldBlock, getActiveSchedule, formatEndTime, getTimeRemainingInSchedule } from '../shared/schedule'
 import type { SordinoSettings } from '../shared/types'
 import { cn } from '../shared/utils'
-import { Settings, Plus, Pause, Play, Clock, Timer } from 'lucide-react'
+import { Settings, Plus, Pause, Play, Clock, Timer, X, Check } from 'lucide-react'
 
 const MAX_QUICK_BYPASSES = 3
 
-type BlockingStatus = 'active' | 'paused' | 'inactive'
+type BlockingStatus = 'active' | 'paused' | 'inactive' | 'bypass'
 
 // Format milliseconds as "Xm Xs"
 function formatTimeRemaining(ms: number): string {
@@ -60,12 +60,18 @@ function App() {
   const blockStatus = shouldBlock(settings)
   const activeSchedule = getActiveSchedule(settings.schedules)
   const isPaused = settings.blockState.pausedUntil && Date.now() < settings.blockState.pausedUntil
+  const hasBypass = bypassTimeLeft !== null && settings.bypassState.activeBypass
 
   let status: BlockingStatus = 'inactive'
   let statusText = 'Blocking inactive'
   let statusSubtext = 'No schedule active'
 
-  if (isPaused) {
+  // Bypass has highest priority - it's a time-sensitive state
+  if (hasBypass) {
+    status = 'bypass'
+    statusText = 'Bypass active'
+    statusSubtext = `${settings.bypassState.activeBypass!.site} • ${formatTimeRemaining(bypassTimeLeft!)} left`
+  } else if (isPaused) {
     status = 'paused'
     const pauseEnd = new Date(settings.blockState.pausedUntil!)
     statusText = 'Paused'
@@ -141,26 +147,35 @@ function App() {
         <div className={cn(
           "relative rounded-xl p-5 border transition-all duration-300",
           status === 'active' && "bg-primary/10 border-primary/30",
+          status === 'bypass' && "bg-orange-500/10 border-orange-500/30",
           status === 'paused' && "bg-yellow-500/10 border-yellow-500/30",
           status === 'inactive' && "bg-secondary/50 border-border"
         )}>
-          {/* Glow effect for active */}
+          {/* Glow effect for active/bypass */}
           {status === 'active' && (
             <div className="absolute inset-0 rounded-xl bg-primary/5 blur-xl" />
+          )}
+          {status === 'bypass' && (
+            <div className="absolute inset-0 rounded-xl bg-orange-500/5 blur-xl" />
           )}
 
           <div className="relative">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <div className={cn(
-                  "w-2.5 h-2.5 rounded-full",
-                  status === 'active' && "bg-green-500 animate-[pulse_1.5s_ease-in-out_infinite] shadow-[0_0_8px_rgba(34,197,94,0.6)]",
-                  status === 'paused' && "bg-yellow-500",
-                  status === 'inactive' && "bg-muted-foreground/50"
-                )} />
+                {status === 'bypass' ? (
+                  <Timer className="w-4 h-4 text-orange-500" />
+                ) : (
+                  <div className={cn(
+                    "w-2.5 h-2.5 rounded-full",
+                    status === 'active' && "bg-green-500 animate-[pulse_1.5s_ease-in-out_infinite] shadow-[0_0_8px_rgba(34,197,94,0.6)]",
+                    status === 'paused' && "bg-yellow-500",
+                    status === 'inactive' && "bg-muted-foreground/50"
+                  )} />
+                )}
                 <span className={cn(
                   "text-sm font-medium uppercase tracking-wider",
                   status === 'active' && "text-primary",
+                  status === 'bypass' && "text-orange-500",
                   status === 'paused' && "text-yellow-500",
                   status === 'inactive' && "text-muted-foreground"
                 )}>
@@ -207,6 +222,12 @@ function App() {
                 </div>
               )}
 
+              {status === 'bypass' && (
+                <div className="flex-1 text-center text-sm text-muted-foreground py-2">
+                  Blocking resumes when bypass expires
+                </div>
+              )}
+
               {(status === 'paused' || status === 'inactive') && (
                 <button
                   onClick={status === 'paused' ? handleResume : handleToggle}
@@ -220,21 +241,6 @@ function App() {
           </div>
         </div>
       </div>
-
-      {/* Active Bypass Banner */}
-      {bypassTimeLeft !== null && settings.bypassState.activeBypass && (
-        <div className="px-4 pb-3">
-          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-orange-500/10 border border-orange-500/30">
-            <Timer className="w-4 h-4 text-orange-500 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-orange-500">Bypass active</p>
-              <p className="text-xs text-muted-foreground truncate">
-                {settings.bypassState.activeBypass.site} • {formatTimeRemaining(bypassTimeLeft)} left
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Stats */}
       <div className="px-4 pb-4">
@@ -252,28 +258,20 @@ function App() {
             value={`${bypassesRemaining}/${MAX_QUICK_BYPASSES}`}
             label="bypasses left"
             highlight={bypassesRemaining === 0}
+            subtext={bypassesRemaining === 0 ? 'Resets at midnight' : undefined}
           />
         </div>
       </div>
 
-      {/* Quick Controls */}
+      {/* Quick Add Site */}
       <div className="px-4 pb-4">
-        <div className="flex gap-2">
-          <QuickAddSite />
-          <button
-            onClick={openSettings}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-border hover:bg-secondary/50 text-sm font-medium transition-colors"
-          >
-            <Settings className="w-4 h-4" />
-            Settings
-          </button>
-        </div>
+        <QuickAddSite />
       </div>
     </div>
   )
 }
 
-function StatCard({ value, label, highlight }: { value: number | string; label: string; highlight?: boolean }) {
+function StatCard({ value, label, highlight, subtext }: { value: number | string; label: string; highlight?: boolean; subtext?: string }) {
   return (
     <div className={cn(
       "rounded-lg p-3 text-center border",
@@ -286,6 +284,9 @@ function StatCard({ value, label, highlight }: { value: number | string; label: 
         {value}
       </p>
       <p className="text-xs text-muted-foreground">{label}</p>
+      {subtext && (
+        <p className="text-[10px] text-muted-foreground/70 mt-1">{subtext}</p>
+      )}
     </div>
   )
 }
@@ -312,27 +313,33 @@ function QuickAddSite() {
 
   if (isOpen) {
     return (
-      <div className="flex-1 flex gap-2">
+      <div className="flex gap-2">
         <input
           type="text"
           value={site}
           onChange={(e) => setSite(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleAdd()
+            if (e.key === 'Escape') { setIsOpen(false); setSite('') }
+          }}
           placeholder="example.com"
-          className="flex-1 px-3 py-2.5 rounded-lg bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+          className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           autoFocus
         />
         <button
           onClick={handleAdd}
-          className="px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+          disabled={!site.trim()}
+          className="p-2.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+          title="Add site"
         >
-          Add
+          <Check className="w-4 h-4" />
         </button>
         <button
           onClick={() => { setIsOpen(false); setSite('') }}
-          className="px-3 py-2.5 rounded-lg border border-border hover:bg-secondary/50 text-sm transition-colors"
+          className="p-2.5 rounded-lg border border-border hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
+          title="Cancel"
         >
-          Cancel
+          <X className="w-4 h-4" />
         </button>
       </div>
     )
@@ -341,7 +348,7 @@ function QuickAddSite() {
   return (
     <button
       onClick={() => setIsOpen(true)}
-      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-border hover:bg-secondary/50 text-sm font-medium transition-colors"
+      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-border hover:bg-secondary/50 text-sm font-medium transition-colors"
     >
       <Plus className="w-4 h-4" />
       Add site

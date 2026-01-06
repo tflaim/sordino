@@ -10,6 +10,8 @@ interface BlockStatus {
 let overlayElement: HTMLElement | null = null
 let isChecking = false
 let hasRecordedBlock = false // Track if we've already recorded a block for this page
+let bypassCountdownInterval: number | null = null
+let shownNotifications = new Set<number>() // Track which time thresholds we've shown
 
 // Sanitize text to prevent XSS - strip any HTML tags
 function sanitizeText(text: string): string {
@@ -428,6 +430,117 @@ function removeOverlay(): void {
   }
 }
 
+// Toast notification for bypass countdown
+function showBypassToast(message: string, urgent: boolean = false): void {
+  // Remove existing toast
+  const existing = document.getElementById('sordino-toast')
+  if (existing) existing.remove()
+
+  if (!document.body) return
+
+  const toast = document.createElement('div')
+  toast.id = 'sordino-toast'
+  toast.style.cssText = `
+    position: fixed !important;
+    bottom: 24px !important;
+    right: 24px !important;
+    background: ${urgent ? 'rgba(239, 68, 68, 0.95)' : 'rgba(249, 115, 22, 0.95)'} !important;
+    color: white !important;
+    padding: 12px 20px !important;
+    border-radius: 8px !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    z-index: 2147483646 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    animation: sordino-toast-in 0.3s ease-out !important;
+  `
+  toast.textContent = message
+
+  // Add icon
+  const icon = document.createElement('span')
+  icon.textContent = '⏱'
+  icon.style.cssText = 'font-size: 16px !important;'
+  toast.insertBefore(icon, toast.firstChild)
+
+  // Add animation keyframes if not present
+  if (!document.getElementById('sordino-toast-styles')) {
+    const style = document.createElement('style')
+    style.id = 'sordino-toast-styles'
+    style.textContent = `
+      @keyframes sordino-toast-in {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes sordino-toast-out {
+        from { opacity: 1; transform: translateY(0); }
+        to { opacity: 0; transform: translateY(20px); }
+      }
+    `
+    document.head?.appendChild(style)
+  }
+
+  document.body.appendChild(toast)
+
+  // Auto-remove after 3 seconds
+  setTimeout(() => {
+    toast.style.animation = 'sordino-toast-out 0.3s ease-out forwards !important'
+    setTimeout(() => toast.remove(), 300)
+  }, 3000)
+}
+
+// Check for active bypass and show countdown notifications
+async function checkBypassCountdown(): Promise<void> {
+  try {
+    const response = await new Promise<{ bypassState?: { activeBypass?: { expiresAt: number; site: string } | null } }>((resolve) => {
+      chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve({})
+          return
+        }
+        resolve(response || {})
+      })
+    })
+
+    const bypass = response?.bypassState?.activeBypass
+    if (!bypass) {
+      // No active bypass, clear tracking
+      shownNotifications.clear()
+      return
+    }
+
+    // Check if bypass is for current site
+    const currentSite = getSiteFromUrl()
+    if (bypass.site !== currentSite && !currentSite.endsWith(`.${bypass.site}`)) {
+      return
+    }
+
+    const remaining = bypass.expiresAt - Date.now()
+    const THRESHOLDS = [
+      { ms: 60000, label: '1 minute left', urgent: false },
+      { ms: 30000, label: '30 seconds left', urgent: false },
+      { ms: 10000, label: '10 seconds left!', urgent: true }
+    ]
+
+    for (const threshold of THRESHOLDS) {
+      if (remaining <= threshold.ms && remaining > threshold.ms - 5000 && !shownNotifications.has(threshold.ms)) {
+        shownNotifications.add(threshold.ms)
+        showBypassToast(`Bypass ending: ${threshold.label}`, threshold.urgent)
+      }
+    }
+
+    // Clear notifications when bypass expires
+    if (remaining <= 0) {
+      shownNotifications.clear()
+    }
+  } catch (error) {
+    console.warn('Sordino: Error checking bypass countdown', error)
+  }
+}
+
 async function checkAndBlock(): Promise<void> {
   if (isChecking) return
   isChecking = true
@@ -437,9 +550,19 @@ async function checkAndBlock(): Promise<void> {
 
     if (status.isBlocked) {
       showOverlay(status)
+      // Stop countdown checking when blocked
+      if (bypassCountdownInterval) {
+        clearInterval(bypassCountdownInterval)
+        bypassCountdownInterval = null
+      }
     } else {
       removeOverlay()
       hasRecordedBlock = false // Reset when no longer blocked
+      // Start countdown checking when not blocked (may have active bypass)
+      if (!bypassCountdownInterval) {
+        bypassCountdownInterval = window.setInterval(checkBypassCountdown, 1000)
+        checkBypassCountdown() // Check immediately
+      }
     }
   } catch (error) {
     console.error('Sordino: Error checking block status', error)
