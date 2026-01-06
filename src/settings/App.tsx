@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { getSettings, saveSettings, subscribeToSettings } from '../shared/storage'
 import type { SordinoSettings, Schedule, Category, DayOfWeek } from '../shared/types'
 import { cn } from '../shared/utils'
-import { Plus, Trash2, X, Check } from 'lucide-react'
+import { Plus, Trash2, X, Check, ChevronDown } from 'lucide-react'
 
 const DAYS: { key: DayOfWeek; label: string; short: string }[] = [
   { key: 'mon', label: 'Monday', short: 'M' },
@@ -156,7 +156,7 @@ function App() {
                           customSites: s.customSites.filter((s) => s !== site),
                         }))
                       }}
-                      className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
+                      className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors duration-150 ease-out"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -210,7 +210,7 @@ function ScheduleCard({
 
   if (isEditing) {
     return (
-      <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+      <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 animate-in fade-in duration-200">
         <input
           type="text"
           value={editedSchedule.name}
@@ -233,7 +233,7 @@ function ScheduleCard({
                   setEditedSchedule({ ...editedSchedule, days })
                 }}
                 className={cn(
-                  "w-8 h-8 rounded-full text-xs font-medium transition-colors",
+                  "w-8 h-8 rounded-full text-xs font-medium transition-colors duration-150 ease-out",
                   editedSchedule.days.includes(day.key)
                     ? "bg-primary text-primary-foreground"
                     : "bg-secondary text-muted-foreground hover:bg-secondary/80"
@@ -274,7 +274,7 @@ function ScheduleCard({
               setIsEditing(false)
               setEditedSchedule(schedule)
             }}
-            className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-secondary transition-colors"
+            className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-secondary transition-colors duration-150 ease-out"
           >
             Cancel
           </button>
@@ -283,7 +283,7 @@ function ScheduleCard({
               onUpdate(editedSchedule)
               setIsEditing(false)
             }}
-            className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors duration-150 ease-out"
           >
             Save
           </button>
@@ -295,7 +295,7 @@ function ScheduleCard({
   return (
     <div
       className={cn(
-        "rounded-xl border p-4 transition-all",
+        "rounded-xl border p-4 transition-[background-color,border-color,opacity] duration-200 ease-out",
         schedule.enabled
           ? "bg-secondary/30 border-border"
           : "bg-transparent border-border/50 opacity-60"
@@ -306,7 +306,7 @@ function ScheduleCard({
           <button
             onClick={onToggle}
             className={cn(
-              "mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors",
+              "mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors duration-150 ease-out",
               schedule.enabled
                 ? "bg-primary border-primary text-primary-foreground"
                 : "border-muted-foreground"
@@ -324,13 +324,13 @@ function ScheduleCard({
         <div className="flex gap-1">
           <button
             onClick={() => setIsEditing(true)}
-            className="px-2 py-1 rounded text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            className="px-2 py-1 rounded text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150 ease-out"
           >
             Edit
           </button>
           <button
             onClick={onDelete}
-            className="p-1 rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-colors"
+            className="p-1 rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-colors duration-150 ease-out"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -393,7 +393,7 @@ function AddScheduleButton({ onAdd }: { onAdd: (schedule: Schedule) => void }) {
                   setSchedule({ ...schedule, days })
                 }}
                 className={cn(
-                  "w-8 h-8 rounded-full text-xs font-medium transition-colors",
+                  "w-8 h-8 rounded-full text-xs font-medium transition-colors duration-150 ease-out",
                   schedule.days.includes(day.key)
                     ? "bg-primary text-primary-foreground"
                     : "bg-secondary text-muted-foreground hover:bg-secondary/80"
@@ -429,14 +429,14 @@ function AddScheduleButton({ onAdd }: { onAdd: (schedule: Schedule) => void }) {
         <div className="flex justify-end gap-2">
           <button
             onClick={() => setIsAdding(false)}
-            className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-secondary transition-colors"
+            className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-secondary transition-colors duration-150 ease-out"
           >
             Cancel
           </button>
           <button
             onClick={handleAdd}
             disabled={!schedule.name.trim()}
-            className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors duration-150 ease-out disabled:opacity-50"
           >
             Add Schedule
           </button>
@@ -448,7 +448,7 @@ function AddScheduleButton({ onAdd }: { onAdd: (schedule: Schedule) => void }) {
   return (
     <button
       onClick={() => setIsAdding(true)}
-      className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed border-border hover:border-primary/50 hover:bg-primary/5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed border-border hover:border-primary/50 hover:bg-primary/5 text-sm text-muted-foreground hover:text-foreground transition-[border-color,background-color,color] duration-200 ease-out"
     >
       <Plus className="w-4 h-4" />
       Add schedule
@@ -467,6 +467,7 @@ function CategoryCard({
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [newSite, setNewSite] = useState('')
+  const contentRef = useRef<HTMLDivElement>(null)
 
   const handleAddSite = () => {
     const cleanSite = newSite.trim().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
@@ -481,7 +482,7 @@ function CategoryCard({
 
   return (
     <div className={cn(
-      "rounded-xl border transition-all",
+      "rounded-xl border overflow-hidden transition-[background-color,border-color,opacity] duration-200 ease-out",
       category.enabled
         ? "bg-secondary/30 border-border"
         : "bg-transparent border-border/50 opacity-60"
@@ -492,7 +493,7 @@ function CategoryCard({
           <button
             onClick={onToggle}
             className={cn(
-              "w-5 h-5 rounded border-2 flex items-center justify-center transition-colors",
+              "w-5 h-5 rounded border-2 flex items-center justify-center transition-colors duration-150 ease-out",
               category.enabled
                 ? "bg-primary border-primary text-primary-foreground"
                 : "border-muted-foreground"
@@ -507,50 +508,63 @@ function CategoryCard({
         </div>
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150 ease-out"
         >
           {isExpanded ? 'Hide' : 'Show'} sites
+          <ChevronDown
+            className={cn(
+              "w-3.5 h-3.5 transition-transform duration-200 ease-out",
+              isExpanded && "rotate-180"
+            )}
+          />
         </button>
       </div>
 
-      {/* Expandable sites list */}
-      {isExpanded && (
-        <div className="px-4 pb-4 border-t border-border/50 pt-3">
-          <div className="space-y-2 mb-3">
-            {category.sites.map((site) => (
-              <div
-                key={site}
-                className="flex items-center justify-between px-3 py-2 rounded-lg bg-background/50 border border-border/30"
-              >
-                <span className="text-sm">{site}</span>
-                <button
-                  onClick={() => handleRemoveSite(site)}
-                  className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
+      {/* Expandable sites list - using grid for smooth height animation */}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-250 ease-out",
+          isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        )}
+      >
+        <div className="overflow-hidden">
+          <div ref={contentRef} className="px-4 pb-4 border-t border-border/50 pt-3">
+            <div className="space-y-2 mb-3">
+              {category.sites.map((site) => (
+                <div
+                  key={site}
+                  className="flex items-center justify-between px-3 py-2 rounded-lg bg-background/50 border border-border/30"
                 >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newSite}
-              onChange={(e) => setNewSite(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddSite()}
-              placeholder="Add site..."
-              className="flex-1 px-3 py-2 rounded-lg bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-            />
-            <button
-              onClick={handleAddSite}
-              disabled={!newSite.trim()}
-              className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
+                  <span className="text-sm">{site}</span>
+                  <button
+                    onClick={() => handleRemoveSite(site)}
+                    className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors duration-150 ease-out"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newSite}
+                onChange={(e) => setNewSite(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddSite()}
+                placeholder="Add site..."
+                className="flex-1 px-3 py-2 rounded-lg bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+              <button
+                onClick={handleAddSite}
+                disabled={!newSite.trim()}
+                className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors duration-150 ease-out disabled:opacity-50"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -593,7 +607,7 @@ function AddSiteInput({ onAdd, existingSites }: { onAdd: (site: string) => void;
         />
         <button
           onClick={handleAdd}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors duration-150 ease-out"
         >
           <Plus className="w-4 h-4" />
           Add
