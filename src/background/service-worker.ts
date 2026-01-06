@@ -1,9 +1,13 @@
 import { getSettings, updateSettings } from '../shared/storage'
-import { shouldBlock, getActiveSchedule, formatEndTime, getTimeRemainingInSchedule } from '../shared/schedule'
+import { shouldBlock, getActiveSchedule, formatEndTime } from '../shared/schedule'
 import type { SordinoSettings, MessageType } from '../shared/types'
 
 const MAX_QUICK_BYPASSES = 3
 const BYPASS_DURATION_MS = 5 * 60 * 1000 // 5 minutes
+
+// Track URLs that have already been counted as blocks (prevents inflation)
+// Cleared when a new day starts or when bypass is used
+const countedBlockUrls = new Set<string>()
 
 // Check if URL matches any blocked site
 function isUrlBlocked(url: string, settings: SordinoSettings): boolean {
@@ -40,6 +44,8 @@ async function checkBypassReset(): Promise<SordinoSettings> {
   const today = new Date().toISOString().split('T')[0]
   return updateSettings((settings) => {
     if (settings.bypassState.lastResetDate !== today) {
+      // Clear counted URLs on new day
+      countedBlockUrls.clear()
       return {
         ...settings,
         bypassState: {
@@ -83,6 +89,11 @@ function getSiteFromUrl(url: string): string {
   }
 }
 
+// Get a unique key for tracking counted blocks (hostname only, not full URL)
+function getBlockKey(url: string): string {
+  return getSiteFromUrl(url)
+}
+
 // Handle messages from content script and popup
 chrome.runtime.onMessage.addListener((message: MessageType, _sender, sendResponse) => {
   handleMessage(message).then(sendResponse)
@@ -108,14 +119,18 @@ async function handleMessage(message: MessageType): Promise<unknown> {
         return { isBlocked: false }
       }
 
-      // Record block
-      await updateSettings((s) => ({
-        ...s,
-        stats: {
-          ...s.stats,
-          blocksTriggered: s.stats.blocksTriggered + 1,
-        },
-      }))
+      // Only record block if we haven't counted this site yet today
+      const blockKey = getBlockKey(message.url)
+      if (!countedBlockUrls.has(blockKey)) {
+        countedBlockUrls.add(blockKey)
+        await updateSettings((s) => ({
+          ...s,
+          stats: {
+            ...s.stats,
+            blocksTriggered: s.stats.blocksTriggered + 1,
+          },
+        }))
+      }
 
       const activeSchedule = getActiveSchedule(settings.schedules)
       return {
@@ -135,6 +150,10 @@ async function handleMessage(message: MessageType): Promise<unknown> {
       }
 
       const site = getSiteFromUrl(message.site)
+
+      // Remove site from counted blocks (allows re-counting if they come back)
+      countedBlockUrls.delete(site)
+
       await updateSettings((s) => ({
         ...s,
         bypassState: {

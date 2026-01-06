@@ -9,26 +9,55 @@ interface BlockStatus {
 
 let overlayElement: HTMLElement | null = null
 let isChecking = false
+let hasRecordedBlock = false // Track if we've already recorded a block for this page
+
+// Sanitize text to prevent XSS - strip any HTML tags
+function sanitizeText(text: string): string {
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.textContent || ''
+}
 
 async function checkBlockStatus(): Promise<BlockStatus> {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage(
-      { type: 'GET_BLOCK_STATUS', url: window.location.href },
-      (response: BlockStatus) => {
-        resolve(response || { isBlocked: false })
-      }
-    )
+    try {
+      chrome.runtime.sendMessage(
+        { type: 'GET_BLOCK_STATUS', url: window.location.href },
+        (response: BlockStatus) => {
+          // Check for extension context invalidation
+          if (chrome.runtime.lastError) {
+            console.warn('Sordino: Extension context error', chrome.runtime.lastError.message)
+            resolve({ isBlocked: false })
+            return
+          }
+          resolve(response || { isBlocked: false })
+        }
+      )
+    } catch (error) {
+      console.warn('Sordino: Failed to check block status', error)
+      resolve({ isBlocked: false })
+    }
   })
 }
 
 async function useBypass(): Promise<{ success: boolean; remaining: number }> {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage(
-      { type: 'USE_BYPASS', site: window.location.href },
-      (response) => {
-        resolve(response || { success: false, remaining: 0 })
-      }
-    )
+    try {
+      chrome.runtime.sendMessage(
+        { type: 'USE_BYPASS', site: window.location.href },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            console.warn('Sordino: Extension context error', chrome.runtime.lastError.message)
+            resolve({ success: false, remaining: 0 })
+            return
+          }
+          resolve(response || { success: false, remaining: 0 })
+        }
+      )
+    } catch (error) {
+      console.warn('Sordino: Failed to use bypass', error)
+      resolve({ success: false, remaining: 0 })
+    }
   })
 }
 
@@ -40,63 +69,123 @@ function getSiteFromUrl(): string {
   }
 }
 
+// Create overlay using safe DOM manipulation (no innerHTML with user data)
 function createOverlay(status: BlockStatus): HTMLElement {
   const quote = getRandomQuote()
   const site = getSiteFromUrl()
 
   const overlay = document.createElement('div')
   overlay.id = 'sordino-overlay'
-  overlay.innerHTML = `
-    <div class="sordino-container">
-      <div class="sordino-glow"></div>
-      <div class="sordino-content">
-        <div class="sordino-logo">
-          <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" class="sordino-icon">
-            <!-- Trumpet icon -->
-            <path d="M12 32C12 32 16 28 24 28C32 28 36 32 36 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-            <path d="M36 26V38" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-            <path d="M36 32H48C50 32 52 30 52 28V36C52 34 50 32 48 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="48" cy="32" r="4" stroke="currentColor" stroke-width="2"/>
-            <path d="M8 30V34" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-            <path d="M4 28V36" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-          <span class="sordino-title">Sordino</span>
-        </div>
 
-        <div class="sordino-quote">
-          <p class="sordino-quote-text">"${quote.text}"</p>
-          <p class="sordino-quote-author">— ${quote.author}</p>
-        </div>
+  // Container
+  const container = document.createElement('div')
+  container.className = 'sordino-container'
 
-        <div class="sordino-card">
-          <p class="sordino-blocked-site">${site} is blocked</p>
-          <p class="sordino-reason">
-            <span class="sordino-reason-icon">📅</span>
-            ${status.reason || 'Blocked'} ${status.timeRemaining ? `• ${status.timeRemaining}` : ''}
-          </p>
-        </div>
+  // Glow effect
+  const glow = document.createElement('div')
+  glow.className = 'sordino-glow'
+  container.appendChild(glow)
 
-        <button class="sordino-bypass-btn" id="sordino-bypass">
-          Bypass for 5 min
-        </button>
-        <p class="sordino-bypass-count" id="sordino-bypass-count">
-          ${status.bypassesRemaining} quick bypass${status.bypassesRemaining === 1 ? '' : 'es'} left
-        </p>
-      </div>
-      <div class="sordino-texture"></div>
-    </div>
+  // Content wrapper
+  const content = document.createElement('div')
+  content.className = 'sordino-content'
+
+  // Logo section
+  const logo = document.createElement('div')
+  logo.className = 'sordino-logo'
+
+  const iconSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  iconSvg.setAttribute('viewBox', '0 0 64 64')
+  iconSvg.setAttribute('fill', 'none')
+  iconSvg.setAttribute('class', 'sordino-icon')
+  iconSvg.innerHTML = `
+    <path d="M12 32C12 32 16 28 24 28C32 28 36 32 36 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M36 26V38" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M36 32H48C50 32 52 30 52 28V36C52 34 50 32 48 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="48" cy="32" r="4" stroke="currentColor" stroke-width="2"/>
+    <path d="M8 30V34" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    <path d="M4 28V36" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
   `
+  logo.appendChild(iconSvg)
 
-  // Add event listener for bypass button
-  const bypassBtn = overlay.querySelector('#sordino-bypass') as HTMLButtonElement
-  const bypassCount = overlay.querySelector('#sordino-bypass-count') as HTMLParagraphElement
+  const title = document.createElement('span')
+  title.className = 'sordino-title'
+  title.textContent = 'Sordino'
+  logo.appendChild(title)
+  content.appendChild(logo)
 
-  if (status.bypassesRemaining === 0) {
+  // Quote section - SAFE: using textContent
+  const quoteDiv = document.createElement('div')
+  quoteDiv.className = 'sordino-quote'
+
+  const quoteText = document.createElement('p')
+  quoteText.className = 'sordino-quote-text'
+  quoteText.textContent = `"${sanitizeText(quote.text)}"`
+  quoteDiv.appendChild(quoteText)
+
+  const quoteAuthor = document.createElement('p')
+  quoteAuthor.className = 'sordino-quote-author'
+  quoteAuthor.textContent = `— ${sanitizeText(quote.author)}`
+  quoteDiv.appendChild(quoteAuthor)
+  content.appendChild(quoteDiv)
+
+  // Card section - SAFE: using textContent for user-controllable data
+  const card = document.createElement('div')
+  card.className = 'sordino-card'
+
+  const blockedSite = document.createElement('p')
+  blockedSite.className = 'sordino-blocked-site'
+  blockedSite.textContent = `${sanitizeText(site)} is blocked`
+  card.appendChild(blockedSite)
+
+  const reason = document.createElement('p')
+  reason.className = 'sordino-reason'
+
+  const reasonIcon = document.createElement('span')
+  reasonIcon.className = 'sordino-reason-icon'
+  reasonIcon.textContent = '📅'
+  reason.appendChild(reasonIcon)
+
+  // CRITICAL: sanitize status.reason as it comes from user-controlled schedule names
+  const reasonText = document.createTextNode(
+    ` ${sanitizeText(status.reason || 'Blocked')}${status.timeRemaining ? ` • ${sanitizeText(status.timeRemaining)}` : ''}`
+  )
+  reason.appendChild(reasonText)
+  card.appendChild(reason)
+  content.appendChild(card)
+
+  // Bypass button
+  const bypassBtn = document.createElement('button')
+  bypassBtn.className = 'sordino-bypass-btn'
+  bypassBtn.id = 'sordino-bypass'
+  bypassBtn.textContent = 'Bypass for 5 min'
+  content.appendChild(bypassBtn)
+
+  // Bypass count
+  const bypassCount = document.createElement('p')
+  bypassCount.className = 'sordino-bypass-count'
+  bypassCount.id = 'sordino-bypass-count'
+  const remaining = status.bypassesRemaining ?? 0
+  bypassCount.textContent = `${remaining} quick bypass${remaining === 1 ? '' : 'es'} left`
+  content.appendChild(bypassCount)
+
+  container.appendChild(content)
+
+  // Texture overlay
+  const texture = document.createElement('div')
+  texture.className = 'sordino-texture'
+  container.appendChild(texture)
+
+  overlay.appendChild(container)
+
+  // Handle bypass state
+  if (remaining === 0) {
     bypassBtn.disabled = true
     bypassBtn.textContent = 'No bypasses left'
     bypassCount.textContent = 'Resets at midnight'
   }
 
+  // Bypass click handler
   bypassBtn.addEventListener('click', async () => {
     bypassBtn.disabled = true
     bypassBtn.textContent = 'Using bypass...'
@@ -119,9 +208,8 @@ function injectStyles(): void {
 
   const styles = document.createElement('style')
   styles.id = 'sordino-styles'
+  // Using system fonts to avoid external requests (privacy/performance)
   styles.textContent = `
-    @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:wght@400;500;600&display=swap');
-
     #sordino-overlay {
       position: fixed !important;
       top: 0 !important;
@@ -131,37 +219,23 @@ function injectStyles(): void {
       width: 100vw !important;
       height: 100vh !important;
       z-index: 2147483647 !important;
-      font-family: 'DM Sans', -apple-system, sans-serif !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
       animation: sordino-fade-in 0.4s ease-out !important;
     }
 
     @keyframes sordino-fade-in {
-      from {
-        opacity: 0;
-      }
-      to {
-        opacity: 1;
-      }
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
 
     @keyframes sordino-float {
-      0%, 100% {
-        transform: translateY(0) scale(1);
-      }
-      50% {
-        transform: translateY(-8px) scale(1.02);
-      }
+      0%, 100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(-8px) scale(1.02); }
     }
 
     @keyframes sordino-glow-pulse {
-      0%, 100% {
-        opacity: 0.4;
-        transform: translate(-50%, -50%) scale(1);
-      }
-      50% {
-        opacity: 0.6;
-        transform: translate(-50%, -50%) scale(1.1);
-      }
+      0%, 100% { opacity: 0.4; transform: translate(-50%, -50%) scale(1); }
+      50% { opacity: 0.6; transform: translate(-50%, -50%) scale(1.1); }
     }
 
     .sordino-container {
@@ -224,7 +298,7 @@ function injectStyles(): void {
     }
 
     .sordino-title {
-      font-family: 'Cormorant Garamond', Georgia, serif !important;
+      font-family: Georgia, 'Times New Roman', serif !important;
       font-size: 1.75rem !important;
       font-weight: 500 !important;
       letter-spacing: 0.1em !important;
@@ -238,7 +312,7 @@ function injectStyles(): void {
     }
 
     .sordino-quote-text {
-      font-family: 'Cormorant Garamond', Georgia, serif !important;
+      font-family: Georgia, 'Times New Roman', serif !important;
       font-size: 1.5rem !important;
       font-weight: 400 !important;
       font-style: italic !important;
@@ -248,7 +322,7 @@ function injectStyles(): void {
     }
 
     .sordino-quote-author {
-      font-family: 'DM Sans', sans-serif !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
       font-size: 0.875rem !important;
       font-weight: 500 !important;
       color: #9a8b7a !important;
@@ -266,7 +340,7 @@ function injectStyles(): void {
     }
 
     .sordino-blocked-site {
-      font-family: 'DM Sans', sans-serif !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
       font-size: 1.125rem !important;
       font-weight: 600 !important;
       color: #e8dcc8 !important;
@@ -274,7 +348,7 @@ function injectStyles(): void {
     }
 
     .sordino-reason {
-      font-family: 'DM Sans', sans-serif !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
       font-size: 0.875rem !important;
       color: #9a8b7a !important;
       margin: 0 !important;
@@ -289,7 +363,7 @@ function injectStyles(): void {
     }
 
     .sordino-bypass-btn {
-      font-family: 'DM Sans', sans-serif !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
       font-size: 0.9375rem !important;
       font-weight: 500 !important;
       color: #1a1612 !important;
@@ -319,7 +393,7 @@ function injectStyles(): void {
     }
 
     .sordino-bypass-count {
-      font-family: 'DM Sans', sans-serif !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
       font-size: 0.8125rem !important;
       color: #6b5d4d !important;
       margin: 0.75rem 0 0 0 !important;
@@ -358,6 +432,7 @@ async function checkAndBlock(): Promise<void> {
       showOverlay(status)
     } else {
       removeOverlay()
+      hasRecordedBlock = false // Reset when no longer blocked
     }
   } catch (error) {
     console.error('Sordino: Error checking block status', error)

@@ -2,6 +2,9 @@ import { SordinoSettings, DEFAULT_SETTINGS } from './types'
 
 const STORAGE_KEY = 'sordino_settings'
 
+// Simple mutex to prevent race conditions in read-modify-write operations
+let updateQueue: Promise<SordinoSettings> = Promise.resolve(DEFAULT_SETTINGS)
+
 export async function getSettings(): Promise<SordinoSettings> {
   return new Promise((resolve) => {
     chrome.storage.local.get([STORAGE_KEY], (result) => {
@@ -20,13 +23,24 @@ export async function saveSettings(settings: SordinoSettings): Promise<void> {
   })
 }
 
+// Queued update to prevent race conditions
+// Each update waits for the previous one to complete before executing
 export async function updateSettings(
   updater: (settings: SordinoSettings) => SordinoSettings
 ): Promise<SordinoSettings> {
-  const current = await getSettings()
-  const updated = updater(current)
-  await saveSettings(updated)
-  return updated
+  // Chain this update after all pending updates
+  updateQueue = updateQueue.then(async () => {
+    const current = await getSettings()
+    const updated = updater(current)
+    await saveSettings(updated)
+    return updated
+  }).catch(async (error) => {
+    console.error('Sordino: Error updating settings', error)
+    // On error, try to return current settings
+    return getSettings()
+  })
+
+  return updateQueue
 }
 
 export function subscribeToSettings(
