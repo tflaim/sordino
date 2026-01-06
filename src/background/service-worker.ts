@@ -362,6 +362,18 @@ async function handleMessage(message: MessageType): Promise<unknown> {
       return { success: true, remaining: MAX_QUICK_BYPASSES }
     }
 
+    case 'CLEAR_BYPASS': {
+      const updated = await updateSettings((s) => ({
+        ...s,
+        bypassState: {
+          ...s.bypassState,
+          activeBypass: null,
+        },
+      }))
+      await updateBadge(getBadgeState(updated))
+      return { success: true }
+    }
+
     default:
       return { error: 'Unknown message type' }
   }

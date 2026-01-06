@@ -112,6 +112,10 @@ function App() {
     await chrome.runtime.sendMessage({ type: 'TOGGLE_MANUAL_OVERRIDE', state: null })
   }
 
+  const handleClearBypass = async () => {
+    await chrome.runtime.sendMessage({ type: 'CLEAR_BYPASS' })
+  }
+
   const openSettings = () => {
     chrome.tabs.create({ url: chrome.runtime.getURL('settings.html') })
   }
@@ -129,7 +133,7 @@ function App() {
         </div>
         <button
           onClick={openSettings}
-          className="p-2 rounded-lg hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-foreground"
+          className="p-2 rounded-xl hover:bg-secondary/50 transition-colors text-muted-foreground hover:text-foreground"
         >
           <Settings className="w-4 h-4" />
         </button>
@@ -166,10 +170,10 @@ function App() {
                   )} />
                 )}
                 <span className={cn(
-                  "text-sm font-medium uppercase tracking-wider",
-                  status === 'active' && "text-primary",
-                  status === 'bypass' && "text-orange-500",
-                  status === 'paused' && "text-yellow-500",
+                  "text-sm font-medium uppercase tracking-wider transition-all duration-300",
+                  status === 'active' && "text-primary [text-shadow:0_0_10px_rgba(205,164,104,0.5),0_0_20px_rgba(205,164,104,0.3)]",
+                  status === 'bypass' && "text-orange-500 [text-shadow:0_0_10px_rgba(249,115,22,0.5),0_0_20px_rgba(249,115,22,0.3)]",
+                  status === 'paused' && "text-yellow-500 [text-shadow:0_0_10px_rgba(234,179,8,0.5),0_0_20px_rgba(234,179,8,0.3)]",
                   status === 'inactive' && "text-muted-foreground"
                 )}>
                   {statusText}
@@ -185,7 +189,7 @@ function App() {
                 <div className="relative flex-1">
                   <button
                     onClick={() => setShowPauseMenu(!showPauseMenu)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-colors"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-colors"
                   >
                     <Pause className="w-4 h-4" />
                     Pause
@@ -193,7 +197,7 @@ function App() {
 
                   {/* Pause dropdown */}
                   {showPauseMenu && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-lg shadow-xl z-10 overflow-hidden">
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-xl shadow-xl z-10 overflow-hidden">
                       <button onClick={() => handlePause(15 * 60 * 1000)} className="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary/50 transition-colors flex items-center gap-2">
                         <Clock className="w-3.5 h-3.5 text-muted-foreground" />
                         15 minutes
@@ -216,15 +220,19 @@ function App() {
               )}
 
               {status === 'bypass' && (
-                <div className="flex-1 text-center text-sm text-muted-foreground py-2">
-                  Blocking resumes when bypass expires
-                </div>
+                <button
+                  onClick={handleClearBypass}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/30 text-orange-500 text-sm font-medium transition-colors"
+                >
+                  <Play className="w-4 h-4" />
+                  Resume Blocking
+                </button>
               )}
 
               {(status === 'paused' || status === 'inactive') && (
                 <button
                   onClick={status === 'paused' ? handleResume : handleToggle}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium transition-colors"
                 >
                   <Play className="w-4 h-4" />
                   {status === 'paused' ? 'Resume' : 'Start Blocking'}
@@ -267,7 +275,7 @@ function App() {
 function StatCard({ value, label, highlight, subtext }: { value: number | string; label: string; highlight?: boolean; subtext?: string }) {
   return (
     <div className={cn(
-      "rounded-lg p-3 text-center border",
+      "rounded-xl p-3 text-center border",
       highlight ? "bg-destructive/10 border-destructive/30" : "bg-secondary/30 border-border/50"
     )}>
       <p className={cn(
@@ -316,20 +324,20 @@ function QuickAddSite() {
             if (e.key === 'Escape') { setIsOpen(false); setSite('') }
           }}
           placeholder="example.com"
-          className="flex-1 min-w-0 px-3 py-2.5 rounded-lg bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+          className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           autoFocus
         />
         <button
           onClick={handleAdd}
           disabled={!site.trim()}
-          className="p-2.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+          className="p-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
           title="Add site"
         >
           <Check className="w-4 h-4" />
         </button>
         <button
           onClick={() => { setIsOpen(false); setSite('') }}
-          className="p-2.5 rounded-lg border border-border hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
+          className="p-2.5 rounded-xl border border-border hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
           title="Cancel"
         >
           <X className="w-4 h-4" />
@@ -341,7 +349,7 @@ function QuickAddSite() {
   return (
     <button
       onClick={() => setIsOpen(true)}
-      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-border hover:bg-secondary/50 text-sm font-medium transition-colors"
+      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border hover:bg-secondary/50 text-sm font-medium transition-colors"
     >
       <Plus className="w-4 h-4" />
       Add site

@@ -11,7 +11,8 @@ let overlayElement: HTMLElement | null = null
 let isChecking = false
 let hasRecordedBlock = false // Track if we've already recorded a block for this page
 let bypassCountdownInterval: number | null = null
-let shownNotifications = new Set<number>() // Track which time thresholds we've shown
+let shownBypassNotifications = new Set<number>() // Track which bypass time thresholds we've shown
+let shownPauseNotifications = new Set<number>() // Track which pause time thresholds we've shown
 
 // Sanitize text to prevent XSS - strip any HTML tags
 function sanitizeText(text: string): string {
@@ -422,13 +423,31 @@ function removeOverlay(): void {
   }
 }
 
-// Toast notification for bypass countdown
-function showBypassToast(message: string, urgent: boolean = false): void {
+// Toast notification for countdown (bypass or pause)
+type ToastTheme = 'bypass' | 'pause'
+
+function showCountdownToast(message: string, urgent: boolean = false, theme: ToastTheme = 'bypass'): void {
   // Remove existing toast
   const existing = document.getElementById('sordino-toast')
   if (existing) existing.remove()
 
   if (!document.body) return
+
+  // Color schemes
+  const colors = {
+    bypass: {
+      normal: 'rgba(249, 115, 22, 0.95)', // orange
+      urgent: 'rgba(239, 68, 68, 0.95)',  // red
+      icon: '⏱'
+    },
+    pause: {
+      normal: 'rgba(234, 179, 8, 0.95)',  // yellow
+      urgent: 'rgba(245, 158, 11, 0.95)', // amber
+      icon: '▶'
+    }
+  }
+
+  const colorScheme = colors[theme]
 
   const toast = document.createElement('div')
   toast.id = 'sordino-toast'
@@ -436,8 +455,8 @@ function showBypassToast(message: string, urgent: boolean = false): void {
     position: fixed !important;
     bottom: 24px !important;
     right: 24px !important;
-    background: ${urgent ? 'rgba(239, 68, 68, 0.95)' : 'rgba(249, 115, 22, 0.95)'} !important;
-    color: white !important;
+    background: ${urgent ? colorScheme.urgent : colorScheme.normal} !important;
+    color: ${theme === 'pause' ? '#1a1612' : 'white'} !important;
     padding: 12px 20px !important;
     border-radius: 8px !important;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
@@ -454,7 +473,7 @@ function showBypassToast(message: string, urgent: boolean = false): void {
 
   // Add icon
   const icon = document.createElement('span')
-  icon.textContent = '⏱'
+  icon.textContent = colorScheme.icon
   icon.style.cssText = 'font-size: 16px !important;'
   toast.insertBefore(icon, toast.firstChild)
 
@@ -464,12 +483,12 @@ function showBypassToast(message: string, urgent: boolean = false): void {
     style.id = 'sordino-toast-styles'
     style.textContent = `
       @keyframes sordino-toast-in {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
+        from { opacity: 0; transform: translateY(20px) scale(0.95); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
       }
       @keyframes sordino-toast-out {
-        from { opacity: 1; transform: translateY(0); }
-        to { opacity: 0; transform: translateY(20px); }
+        from { opacity: 1; transform: translateY(0) scale(1); }
+        to { opacity: 0; transform: translateY(-10px) scale(0.95); }
       }
     `
     document.head?.appendChild(style)
@@ -477,17 +496,20 @@ function showBypassToast(message: string, urgent: boolean = false): void {
 
   document.body.appendChild(toast)
 
-  // Auto-remove after 3 seconds
+  // Auto-remove after 2.5 seconds with graceful fade
   setTimeout(() => {
-    toast.style.animation = 'sordino-toast-out 0.3s ease-out forwards !important'
-    setTimeout(() => toast.remove(), 300)
-  }, 3000)
+    toast.style.animation = 'sordino-toast-out 0.5s ease-in-out forwards !important'
+    setTimeout(() => toast.remove(), 500)
+  }, 2500)
 }
 
-// Check for active bypass and show countdown notifications
-async function checkBypassCountdown(): Promise<void> {
+// Check for active bypass or pause and show countdown notifications
+async function checkCountdowns(): Promise<void> {
   try {
-    const response = await new Promise<{ bypassState?: { activeBypass?: { expiresAt: number; site: string } | null } }>((resolve) => {
+    const response = await new Promise<{
+      bypassState?: { activeBypass?: { expiresAt: number; site: string } | null }
+      blockState?: { pausedUntil?: number | null }
+    }>((resolve) => {
       chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, (response) => {
         if (chrome.runtime.lastError) {
           resolve({})
@@ -497,39 +519,57 @@ async function checkBypassCountdown(): Promise<void> {
       })
     })
 
-    const bypass = response?.bypassState?.activeBypass
-    if (!bypass) {
-      // No active bypass, clear tracking
-      shownNotifications.clear()
-      return
-    }
-
-    // Check if bypass is for current site
-    const currentSite = getSiteFromUrl()
-    if (bypass.site !== currentSite && !currentSite.endsWith(`.${bypass.site}`)) {
-      return
-    }
-
-    const remaining = bypass.expiresAt - Date.now()
     const THRESHOLDS = [
-      { ms: 60000, label: '1 minute left', urgent: false },
-      { ms: 30000, label: '30 seconds left', urgent: false },
-      { ms: 10000, label: '10 seconds left!', urgent: true }
+      { ms: 60000, label: '1 minute', urgent: false },
+      { ms: 30000, label: '30 seconds', urgent: false },
+      { ms: 10000, label: '10 seconds', urgent: true },
+      { ms: 5000, label: '5 seconds', urgent: true }
     ]
 
-    for (const threshold of THRESHOLDS) {
-      if (remaining <= threshold.ms && remaining > threshold.ms - 5000 && !shownNotifications.has(threshold.ms)) {
-        shownNotifications.add(threshold.ms)
-        showBypassToast(`Bypass ending: ${threshold.label}`, threshold.urgent)
+    // Check bypass countdown
+    const bypass = response?.bypassState?.activeBypass
+    if (bypass) {
+      const currentSite = getSiteFromUrl()
+      const isCurrentSite = bypass.site === currentSite || currentSite.endsWith(`.${bypass.site}`)
+
+      if (isCurrentSite) {
+        const remaining = bypass.expiresAt - Date.now()
+
+        for (const threshold of THRESHOLDS) {
+          if (remaining <= threshold.ms && remaining > threshold.ms - 5000 && !shownBypassNotifications.has(threshold.ms)) {
+            shownBypassNotifications.add(threshold.ms)
+            showCountdownToast(`Bypass ending: ${threshold.label}`, threshold.urgent, 'bypass')
+          }
+        }
+
+        if (remaining <= 0) {
+          shownBypassNotifications.clear()
+        }
       }
+    } else {
+      shownBypassNotifications.clear()
     }
 
-    // Clear notifications when bypass expires
-    if (remaining <= 0) {
-      shownNotifications.clear()
+    // Check pause countdown
+    const pausedUntil = response?.blockState?.pausedUntil
+    if (pausedUntil && Date.now() < pausedUntil) {
+      const remaining = pausedUntil - Date.now()
+
+      for (const threshold of THRESHOLDS) {
+        if (remaining <= threshold.ms && remaining > threshold.ms - 5000 && !shownPauseNotifications.has(threshold.ms)) {
+          shownPauseNotifications.add(threshold.ms)
+          showCountdownToast(`Blocking resumes: ${threshold.label}`, threshold.urgent, 'pause')
+        }
+      }
+
+      if (remaining <= 0) {
+        shownPauseNotifications.clear()
+      }
+    } else {
+      shownPauseNotifications.clear()
     }
   } catch (error) {
-    console.warn('Sordino: Error checking bypass countdown', error)
+    console.warn('Sordino: Error checking countdowns', error)
   }
 }
 
@@ -550,10 +590,10 @@ async function checkAndBlock(): Promise<void> {
     } else {
       removeOverlay()
       hasRecordedBlock = false // Reset when no longer blocked
-      // Start countdown checking when not blocked (may have active bypass)
+      // Start countdown checking when not blocked (may have active bypass or pause)
       if (!bypassCountdownInterval) {
-        bypassCountdownInterval = window.setInterval(checkBypassCountdown, 1000)
-        checkBypassCountdown() // Check immediately
+        bypassCountdownInterval = window.setInterval(checkCountdowns, 1000)
+        checkCountdowns() // Check immediately
       }
     }
   } catch (error) {

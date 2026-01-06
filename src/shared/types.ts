@@ -206,3 +206,4 @@ export type MessageType =
   | { type: 'TOGGLE_MANUAL_OVERRIDE'; state: 'on' | 'off' | null }
   | { type: 'PAUSE_BLOCKING'; until: number }
   | { type: 'EMERGENCY_REFRESH_BYPASSES' }
+  | { type: 'CLEAR_BYPASS' }
