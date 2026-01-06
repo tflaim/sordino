@@ -1,6 +1,7 @@
 import { getSettings, updateSettings } from '../shared/storage'
 import { shouldBlock, getActiveSchedule, formatEndTime } from '../shared/schedule'
 import type { SordinoSettings, MessageType } from '../shared/types'
+import { getLocalDateString } from '../shared/types'
 
 const MAX_QUICK_BYPASSES = 3
 const BYPASS_DURATION_MS = 5 * 60 * 1000 // 5 minutes
@@ -82,27 +83,44 @@ function isUrlBlocked(url: string, settings: SordinoSettings): boolean {
   }
 }
 
-// Get Monday of a given date's week
+// Get Monday of a given date's week (local timezone)
 function getWeekStart(date: Date = new Date()): string {
   const d = new Date(date)
   const day = d.getDay()
   const diff = d.getDate() - day + (day === 0 ? -6 : 1)
   d.setDate(diff)
-  return d.toISOString().split('T')[0]
+  return getLocalDateString(d)
 }
 
-// Check if emergency refresh is available (once per week)
+// Check if emergency refresh is available (once per day, resets at midnight local time)
 function canEmergencyRefresh(settings: SordinoSettings): boolean {
   if (!settings.bypassState.lastEmergencyRefresh) return true
-  const lastRefresh = new Date(settings.bypassState.lastEmergencyRefresh)
-  const currentWeekStart = getWeekStart()
-  const lastRefreshWeekStart = getWeekStart(lastRefresh)
-  return currentWeekStart !== lastRefreshWeekStart
+  const today = getLocalDateString()
+  return settings.bypassState.lastEmergencyRefresh !== today
 }
 
-// Check and reset bypass state if new day
+// Merge site stats into weekly totals
+function mergeSiteStats(
+  weeklySiteStats: { [site: string]: { blocks: number; bypasses: number } },
+  dailySiteStats: { [site: string]: { blocks: number; bypasses: number } }
+): { [site: string]: { blocks: number; bypasses: number } } {
+  const merged = { ...weeklySiteStats }
+  for (const [site, stats] of Object.entries(dailySiteStats)) {
+    if (merged[site]) {
+      merged[site] = {
+        blocks: merged[site].blocks + stats.blocks,
+        bypasses: merged[site].bypasses + stats.bypasses,
+      }
+    } else {
+      merged[site] = { ...stats }
+    }
+  }
+  return merged
+}
+
+// Check and reset bypass state if new day (local timezone)
 async function checkBypassReset(): Promise<SordinoSettings> {
-  const today = new Date().toISOString().split('T')[0]
+  const today = getLocalDateString()
   const currentWeekStart = getWeekStart()
 
   return updateSettings((settings) => {
@@ -114,9 +132,14 @@ async function checkBypassReset(): Promise<SordinoSettings> {
       const prevStats = settings.stats
       let weeklyStats = { ...settings.weeklyStats }
 
-      // If it's a new week, reset weekly stats
+      // If it's a new week, reset weekly stats completely
       if (weeklyStats.weekStart !== currentWeekStart) {
-        weeklyStats = { weekStart: currentWeekStart, days: [] }
+        weeklyStats = {
+          weekStart: currentWeekStart,
+          days: [],
+          siteStats: {},
+          emergencyRefreshesUsed: 0,
+        }
       }
 
       // Add previous day to weekly stats (if it had any activity)
@@ -126,6 +149,9 @@ async function checkBypassReset(): Promise<SordinoSettings> {
           { date: prevStats.date, blocksTriggered: prevStats.blocksTriggered, bypassesUsed: prevStats.bypassesUsed }
         ].slice(-7) // Keep only last 7 days
       }
+
+      // Merge daily site stats into weekly
+      weeklyStats.siteStats = mergeSiteStats(weeklyStats.siteStats || {}, prevStats.siteStats || {})
 
       // Clear counted URLs on new day
       countedBlockUrls.clear()
@@ -142,6 +168,7 @@ async function checkBypassReset(): Promise<SordinoSettings> {
           date: today,
           blocksTriggered: 0,
           bypassesUsed: 0,
+          siteStats: {},
         },
         weeklyStats,
       }
@@ -206,18 +233,30 @@ async function handleMessage(message: MessageType): Promise<unknown> {
         return { isBlocked: false }
       }
 
-      // Only record block if we haven't counted this site yet today
+      // Record block with per-site tracking
       const blockKey = getBlockKey(message.url)
-      if (!countedBlockUrls.has(blockKey)) {
-        countedBlockUrls.add(blockKey)
-        await updateSettings((s) => ({
+      const isFirstBlockForSite = !countedBlockUrls.has(blockKey)
+      countedBlockUrls.add(blockKey)
+
+      await updateSettings((s) => {
+        const siteStats = { ...s.stats.siteStats }
+        if (!siteStats[blockKey]) {
+          siteStats[blockKey] = { blocks: 0, bypasses: 0 }
+        }
+        siteStats[blockKey] = {
+          ...siteStats[blockKey],
+          blocks: siteStats[blockKey].blocks + 1,
+        }
+
+        return {
           ...s,
           stats: {
             ...s.stats,
-            blocksTriggered: s.stats.blocksTriggered + 1,
+            blocksTriggered: isFirstBlockForSite ? s.stats.blocksTriggered + 1 : s.stats.blocksTriggered,
+            siteStats,
           },
-        }))
-      }
+        }
+      })
 
       const activeSchedule = getActiveSchedule(settings.schedules)
       return {
@@ -241,21 +280,33 @@ async function handleMessage(message: MessageType): Promise<unknown> {
       // Remove site from counted blocks (allows re-counting if they come back)
       countedBlockUrls.delete(site)
 
-      const updated = await updateSettings((s) => ({
-        ...s,
-        bypassState: {
-          ...s.bypassState,
-          quickBypassesUsed: s.bypassState.quickBypassesUsed + 1,
-          activeBypass: {
-            site,
-            expiresAt: Date.now() + BYPASS_DURATION_MS,
+      const updated = await updateSettings((s) => {
+        const siteStats = { ...s.stats.siteStats }
+        if (!siteStats[site]) {
+          siteStats[site] = { blocks: 0, bypasses: 0 }
+        }
+        siteStats[site] = {
+          ...siteStats[site],
+          bypasses: siteStats[site].bypasses + 1,
+        }
+
+        return {
+          ...s,
+          bypassState: {
+            ...s.bypassState,
+            quickBypassesUsed: s.bypassState.quickBypassesUsed + 1,
+            activeBypass: {
+              site,
+              expiresAt: Date.now() + BYPASS_DURATION_MS,
+            },
           },
-        },
-        stats: {
-          ...s.stats,
-          bypassesUsed: s.stats.bypassesUsed + 1,
-        },
-      }))
+          stats: {
+            ...s.stats,
+            bypassesUsed: s.stats.bypassesUsed + 1,
+            siteStats,
+          },
+        }
+      })
       await updateBadge(getBadgeState(updated))
 
       return { success: true, remaining: remaining - 1 }
@@ -292,16 +343,20 @@ async function handleMessage(message: MessageType): Promise<unknown> {
 
     case 'EMERGENCY_REFRESH_BYPASSES': {
       if (!canEmergencyRefresh(settings)) {
-        return { success: false, reason: 'Already used this week' }
+        return { success: false, reason: 'Already used today' }
       }
 
-      const today = new Date().toISOString().split('T')[0]
+      const today = getLocalDateString()
       await updateSettings((s) => ({
         ...s,
         bypassState: {
           ...s.bypassState,
           quickBypassesUsed: 0,
           lastEmergencyRefresh: today,
+        },
+        weeklyStats: {
+          ...s.weeklyStats,
+          emergencyRefreshesUsed: (s.weeklyStats.emergencyRefreshesUsed || 0) + 1,
         },
       }))
       return { success: true, remaining: MAX_QUICK_BYPASSES }

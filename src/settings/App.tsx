@@ -1,11 +1,13 @@
 import { useEffect, useState, useRef } from 'react'
 import { getSettings, saveSettings, subscribeToSettings } from '../shared/storage'
 import type { SordinoSettings, Schedule, Category, DayOfWeek } from '../shared/types'
-import { TEMPLATE_SCHEDULE_IDS } from '../shared/types'
+import { TEMPLATE_SCHEDULE_IDS, DEFAULT_SCHEDULES, getLocalDateString } from '../shared/types'
 import { cn } from '../shared/utils'
-import { Plus, Trash2, X, Check, ChevronDown, RefreshCw, BarChart3 } from 'lucide-react'
+import { Plus, Trash2, X, Check, ChevronDown, RefreshCw, BarChart3, Settings, Activity, AlertCircle } from 'lucide-react'
 
 const MAX_QUICK_BYPASSES = 3
+
+type Tab = 'settings' | 'usage'
 
 const DAYS: { key: DayOfWeek; label: string; short: string }[] = [
   { key: 'mon', label: 'Monday', short: 'M' },
@@ -19,6 +21,7 @@ const DAYS: { key: DayOfWeek; label: string; short: string }[] = [
 
 function App() {
   const [settings, setSettings] = useState<SordinoSettings | null>(null)
+  const [activeTab, setActiveTab] = useState<Tab>('settings')
 
   useEffect(() => {
     getSettings().then(setSettings)
@@ -48,7 +51,7 @@ function App() {
 
       <div className="relative max-w-2xl mx-auto px-6 py-8">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-8">
+        <div className="flex items-center gap-3 mb-6">
           <svg viewBox="0 0 64 64" fill="none" className="w-8 h-8 text-primary">
             <path d="M12 32C12 32 16 28 24 28C32 28 36 32 36 32" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
             <path d="M36 26V38" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
@@ -57,149 +60,186 @@ function App() {
             <path d="M8 30V34" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
             <path d="M4 28V36" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
           </svg>
-          <h1 className="font-serif text-2xl font-medium tracking-wide text-primary">Sordino Settings</h1>
+          <h1 className="font-serif text-2xl font-medium tracking-wide text-primary">Sordino</h1>
         </div>
 
-        {/* Schedules Section */}
-        <section className="mb-10">
-          <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Schedules</h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            Template schedules can be toggled on/off. Create custom schedules for full control.
-          </p>
-          <div className="space-y-3">
-            {settings.schedules.map((schedule) => (
-              <ScheduleCard
-                key={schedule.id}
-                schedule={schedule}
-                isTemplate={TEMPLATE_SCHEDULE_IDS.includes(schedule.id)}
-                onToggle={() => {
+        {/* Tab Navigation */}
+        <div className="flex gap-1 p-1 mb-8 rounded-xl bg-secondary/50 border border-border">
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+              activeTab === 'settings'
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Settings className="w-4 h-4" />
+            Settings
+          </button>
+          <button
+            onClick={() => setActiveTab('usage')}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+              activeTab === 'usage'
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Activity className="w-4 h-4" />
+            Usage
+          </button>
+        </div>
+
+        {activeTab === 'settings' ? (
+          <>
+            {/* Schedules Section */}
+            <section className="mb-10">
+              <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Schedules</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Template schedules can be toggled on/off. Create custom schedules for full control.
+              </p>
+              <div className="space-y-3">
+                {settings.schedules.map((schedule) => (
+                  <ScheduleCard
+                    key={schedule.id}
+                    schedule={schedule}
+                    isTemplate={TEMPLATE_SCHEDULE_IDS.includes(schedule.id)}
+                    onToggle={() => {
+                      updateSettings((s) => ({
+                        ...s,
+                        schedules: s.schedules.map((sch) =>
+                          sch.id === schedule.id ? { ...sch, enabled: !sch.enabled } : sch
+                        ),
+                      }))
+                    }}
+                    onUpdate={(updated) => {
+                      updateSettings((s) => ({
+                        ...s,
+                        schedules: s.schedules.map((sch) =>
+                          sch.id === schedule.id ? updated : sch
+                        ),
+                      }))
+                    }}
+                    onDelete={() => {
+                      updateSettings((s) => ({
+                        ...s,
+                        schedules: s.schedules.filter((sch) => sch.id !== schedule.id),
+                      }))
+                    }}
+                  />
+                ))}
+              </div>
+              <AddScheduleButton
+                onAdd={(schedule) => {
                   updateSettings((s) => ({
                     ...s,
-                    schedules: s.schedules.map((sch) =>
-                      sch.id === schedule.id ? { ...sch, enabled: !sch.enabled } : sch
-                    ),
-                  }))
-                }}
-                onUpdate={(updated) => {
-                  updateSettings((s) => ({
-                    ...s,
-                    schedules: s.schedules.map((sch) =>
-                      sch.id === schedule.id ? updated : sch
-                    ),
-                  }))
-                }}
-                onDelete={() => {
-                  updateSettings((s) => ({
-                    ...s,
-                    schedules: s.schedules.filter((sch) => sch.id !== schedule.id),
+                    schedules: [...s.schedules, schedule],
                   }))
                 }}
               />
-            ))}
-          </div>
-          <AddScheduleButton
-            onAdd={(schedule) => {
-              updateSettings((s) => ({
-                ...s,
-                schedules: [...s.schedules, schedule],
-              }))
-            }}
-          />
-        </section>
+            </section>
 
-        {/* Divider */}
-        <div className="border-t border-border mb-10" />
+            {/* Divider */}
+            <div className="border-t border-border mb-10" />
 
-        {/* Blocked Sites Section */}
-        <section className="mb-10">
-          <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Blocked Sites</h2>
+            {/* Blocked Sites Section */}
+            <section className="mb-10">
+              <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Blocked Sites</h2>
 
-          {/* Categories */}
-          <div className="mb-6">
-            <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-3">Categories</h3>
-            <div className="space-y-3">
-              {settings.categories.map((category) => (
-                <CategoryCard
-                  key={category.id}
-                  category={category}
-                  onToggle={() => {
-                    updateSettings((s) => ({
-                      ...s,
-                      categories: s.categories.map((cat) =>
-                        cat.id === category.id ? { ...cat, enabled: !cat.enabled } : cat
-                      ),
-                    }))
-                  }}
-                  onUpdate={(updated) => {
-                    updateSettings((s) => ({
-                      ...s,
-                      categories: s.categories.map((cat) =>
-                        cat.id === category.id ? updated : cat
-                      ),
-                    }))
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Custom Sites */}
-          <div>
-            <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-3">Custom Sites</h3>
-            <div className="space-y-2 mb-3">
-              {settings.customSites.length === 0 ? (
-                <p className="text-sm text-muted-foreground italic">No custom sites added</p>
-              ) : (
-                settings.customSites.map((site) => (
-                  <div
-                    key={site}
-                    className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-secondary/30 border border-border/50"
-                  >
-                    <span className="text-sm">{site}</span>
-                    <button
-                      onClick={() => {
+              {/* Categories */}
+              <div className="mb-6">
+                <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-3">Categories</h3>
+                <div className="space-y-3">
+                  {settings.categories.map((category) => (
+                    <CategoryCard
+                      key={category.id}
+                      category={category}
+                      onToggle={() => {
                         updateSettings((s) => ({
                           ...s,
-                          customSites: s.customSites.filter((s) => s !== site),
+                          categories: s.categories.map((cat) =>
+                            cat.id === category.id ? { ...cat, enabled: !cat.enabled } : cat
+                          ),
                         }))
                       }}
-                      className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors duration-150 ease-out"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-            <AddSiteInput
-              onAdd={(site) => {
-                updateSettings((s) => ({
-                  ...s,
-                  customSites: [...s.customSites, site],
-                }))
-              }}
-              existingSites={settings.customSites}
-            />
-          </div>
-        </section>
+                      onUpdate={(updated) => {
+                        updateSettings((s) => ({
+                          ...s,
+                          categories: s.categories.map((cat) =>
+                            cat.id === category.id ? updated : cat
+                          ),
+                        }))
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
 
-        {/* Divider */}
-        <div className="border-t border-border mb-10" />
+              {/* Custom Sites */}
+              <div>
+                <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-3">Custom Sites</h3>
+                <div className="space-y-2 mb-3">
+                  {settings.customSites.length === 0 ? (
+                    <p className="text-sm text-muted-foreground italic">No custom sites added</p>
+                  ) : (
+                    settings.customSites.map((site) => (
+                      <div
+                        key={site}
+                        className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-secondary/30 border border-border/50"
+                      >
+                        <span className="text-sm">{site}</span>
+                        <button
+                          onClick={() => {
+                            updateSettings((s) => ({
+                              ...s,
+                              customSites: s.customSites.filter((siteName) => siteName !== site),
+                            }))
+                          }}
+                          className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors duration-150 ease-out"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <AddSiteInput
+                  onAdd={(site) => {
+                    updateSettings((s) => ({
+                      ...s,
+                      customSites: [...s.customSites, site],
+                    }))
+                  }}
+                  existingSites={settings.customSites}
+                />
+              </div>
+            </section>
 
-        {/* Bypass Settings Section */}
-        <section className="mb-10">
-          <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Bypass Settings</h2>
-          <BypassSettings settings={settings} />
-        </section>
+            {/* Divider */}
+            <div className="border-t border-border mb-10" />
 
-        {/* Divider */}
-        <div className="border-t border-border mb-10" />
+            {/* Bypass Settings Section */}
+            <section className="mb-10">
+              <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Bypass Settings</h2>
+              <BypassSettings settings={settings} />
+            </section>
+          </>
+        ) : (
+          <>
+            {/* Usage Tab */}
+            <section className="mb-10">
+              <h2 className="font-serif text-xl font-medium mb-4 text-foreground">This Week</h2>
+              <WeeklyStatsChart settings={settings} />
+            </section>
 
-        {/* Weekly Stats Section */}
-        <section className="mb-10">
-          <h2 className="font-serif text-xl font-medium mb-4 text-foreground">This Week</h2>
-          <WeeklyStatsChart settings={settings} />
-        </section>
+            {/* Most Blocked/Bypassed Sites */}
+            <section className="mb-10">
+              <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Top Sites</h2>
+              <TopSitesDisplay settings={settings} />
+            </section>
+          </>
+        )}
       </div>
     </div>
   )
@@ -372,8 +412,23 @@ function ScheduleCard({
   )
 }
 
+// Check if a schedule matches a template schedule
+function matchesTemplateSchedule(schedule: Schedule): Schedule | null {
+  for (const template of DEFAULT_SCHEDULES) {
+    const sameDays = schedule.days.length === template.days.length &&
+      schedule.days.every(d => template.days.includes(d))
+    const sameTime = schedule.startTime === template.startTime &&
+      schedule.endTime === template.endTime
+    if (sameDays && sameTime) {
+      return template
+    }
+  }
+  return null
+}
+
 function AddScheduleButton({ onAdd }: { onAdd: (schedule: Schedule) => void }) {
   const [isAdding, setIsAdding] = useState(false)
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null)
   const [schedule, setSchedule] = useState<Schedule>({
     id: '',
     name: '',
@@ -383,6 +438,18 @@ function AddScheduleButton({ onAdd }: { onAdd: (schedule: Schedule) => void }) {
     endTime: '17:00',
   })
 
+  // Check for duplicates whenever schedule changes
+  useEffect(() => {
+    if (!isAdding) return
+
+    const matchedTemplate = matchesTemplateSchedule(schedule)
+    if (matchedTemplate) {
+      setDuplicateWarning(`This matches the "${matchedTemplate.name}" template. Consider using that instead.`)
+    } else {
+      setDuplicateWarning(null)
+    }
+  }, [schedule.days, schedule.startTime, schedule.endTime, isAdding])
+
   const handleAdd = () => {
     if (!schedule.name.trim()) return
     onAdd({
@@ -390,6 +457,7 @@ function AddScheduleButton({ onAdd }: { onAdd: (schedule: Schedule) => void }) {
       id: `custom-${Date.now()}`,
     })
     setIsAdding(false)
+    setDuplicateWarning(null)
     setSchedule({
       id: '',
       name: '',
@@ -458,9 +526,20 @@ function AddScheduleButton({ onAdd }: { onAdd: (schedule: Schedule) => void }) {
           </div>
         </div>
 
+        {/* Duplicate Warning */}
+        {duplicateWarning && (
+          <div className="flex items-start gap-2 mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+            <AlertCircle className="w-4 h-4 text-yellow-500 mt-0.5 shrink-0" />
+            <p className="text-sm text-yellow-600 dark:text-yellow-400">{duplicateWarning}</p>
+          </div>
+        )}
+
         <div className="flex justify-end gap-2">
           <button
-            onClick={() => setIsAdding(false)}
+            onClick={() => {
+              setIsAdding(false)
+              setDuplicateWarning(null)
+            }}
             className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-secondary transition-colors duration-150 ease-out"
           >
             Cancel
@@ -653,26 +732,52 @@ function AddSiteInput({ onAdd, existingSites }: { onAdd: (site: string) => void;
 function BypassSettings({ settings }: { settings: SordinoSettings }) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [refreshResult, setRefreshResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [countdown, setCountdown] = useState('')
 
   const bypassesUsed = settings.bypassState.quickBypassesUsed
   const bypassesRemaining = MAX_QUICK_BYPASSES - bypassesUsed
 
-  // Check if emergency refresh was used this week
+  // Check if emergency refresh was used today (daily reset at midnight local time)
   const canRefresh = () => {
     if (!settings.bypassState.lastEmergencyRefresh) return true
-    const lastRefresh = new Date(settings.bypassState.lastEmergencyRefresh)
-    const now = new Date()
-    const day = now.getDay()
-    const mondayOffset = day === 0 ? -6 : 1 - day
-    const monday = new Date(now)
-    monday.setDate(now.getDate() + mondayOffset)
-    monday.setHours(0, 0, 0, 0)
-    return lastRefresh < monday
+    const today = getLocalDateString()
+    return settings.bypassState.lastEmergencyRefresh !== today
   }
+
+  // Format date for display
+  const formatLastUsedDate = (dateStr: string | null): string => {
+    if (!dateStr) return ''
+    const date = new Date(dateStr)
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
+  // Calculate countdown to midnight
+  useEffect(() => {
+    const updateCountdown = () => {
+      const now = new Date()
+      const midnight = new Date(now)
+      midnight.setDate(midnight.getDate() + 1)
+      midnight.setHours(0, 0, 0, 0)
+
+      const diff = midnight.getTime() - now.getTime()
+      const hours = Math.floor(diff / (1000 * 60 * 60))
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+
+      if (hours > 0) {
+        setCountdown(`${hours}h ${minutes}m`)
+      } else {
+        setCountdown(`${minutes}m`)
+      }
+    }
+
+    updateCountdown()
+    const interval = setInterval(updateCountdown, 60000) // Update every minute
+    return () => clearInterval(interval)
+  }, [])
 
   const handleEmergencyRefresh = async () => {
     if (!canRefresh()) {
-      setRefreshResult({ success: false, message: 'Emergency refresh already used this week' })
+      setRefreshResult({ success: false, message: 'Emergency refresh already used today' })
       return
     }
 
@@ -694,6 +799,7 @@ function BypassSettings({ settings }: { settings: SordinoSettings }) {
   }
 
   const refreshAvailable = canRefresh()
+  const lastUsedDate = settings.bypassState.lastEmergencyRefresh
 
   return (
     <div className="space-y-4">
@@ -716,7 +822,7 @@ function BypassSettings({ settings }: { settings: SordinoSettings }) {
             style={{ width: `${(bypassesRemaining / MAX_QUICK_BYPASSES) * 100}%` }}
           />
         </div>
-        <p className="text-xs text-muted-foreground mt-2">Resets daily at midnight</p>
+        <p className="text-xs text-muted-foreground mt-2">Resets at midnight ({countdown} remaining)</p>
       </div>
 
       {/* Emergency Refresh */}
@@ -731,9 +837,14 @@ function BypassSettings({ settings }: { settings: SordinoSettings }) {
             <p className="font-medium">Emergency Refresh</p>
             <p className="text-sm text-muted-foreground">
               {refreshAvailable
-                ? 'Reset your daily bypasses once per week when you really need them.'
-                : 'Already used this week. Resets next Monday.'}
+                ? 'Reset your daily bypasses once per day when you really need them.'
+                : `Already used today. Available again at midnight (${countdown}).`}
             </p>
+            {lastUsedDate && (
+              <p className="text-xs text-muted-foreground/70 mt-1">
+                Last used: {formatLastUsedDate(lastUsedDate)}
+              </p>
+            )}
           </div>
           <button
             onClick={handleEmergencyRefresh}
@@ -777,7 +888,7 @@ function WeeklyStatsChart({ settings }: { settings: SordinoSettings }) {
     const weekData = DAYS_OF_WEEK.map((dayName, index) => {
       const date = new Date(monday)
       date.setDate(monday.getDate() + index)
-      const dateStr = date.toISOString().split('T')[0]
+      const dateStr = getLocalDateString(date)
 
       // Check if it's today
       const isToday = dateStr === settings.stats.date
@@ -808,57 +919,193 @@ function WeeklyStatsChart({ settings }: { settings: SordinoSettings }) {
   }
 
   const weekData = getWeekData()
-  const maxBlocks = Math.max(...weekData.map(d => d.blocks), 1)
+  const maxValue = Math.max(...weekData.map(d => Math.max(d.blocks, d.bypasses)), 1)
   const totalBlocks = weekData.reduce((sum, d) => sum + d.blocks, 0)
   const totalBypasses = weekData.reduce((sum, d) => sum + d.bypasses, 0)
+  const emergencyRefreshes = settings.weeklyStats.emergencyRefreshesUsed || 0
 
   return (
     <div className="space-y-4">
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-3">
         <div className="rounded-xl border border-border bg-secondary/30 p-4 text-center">
-          <p className="text-3xl font-serif font-semibold text-foreground">{totalBlocks}</p>
-          <p className="text-sm text-muted-foreground">Sites Blocked</p>
+          <p className="text-2xl font-serif font-semibold text-primary">{totalBlocks}</p>
+          <p className="text-xs text-muted-foreground">Blocks</p>
         </div>
         <div className="rounded-xl border border-border bg-secondary/30 p-4 text-center">
-          <p className="text-3xl font-serif font-semibold text-foreground">{totalBypasses}</p>
-          <p className="text-sm text-muted-foreground">Bypasses Used</p>
+          <p className="text-2xl font-serif font-semibold text-orange-500">{totalBypasses}</p>
+          <p className="text-xs text-muted-foreground">Bypasses</p>
+        </div>
+        <div className="rounded-xl border border-border bg-secondary/30 p-4 text-center">
+          <p className="text-2xl font-serif font-semibold text-muted-foreground">{emergencyRefreshes}</p>
+          <p className="text-xs text-muted-foreground">Refreshes</p>
         </div>
       </div>
 
-      {/* Chart */}
+      {/* Dual Bar Chart */}
       <div className="rounded-xl border border-border bg-secondary/30 p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <BarChart3 className="w-4 h-4 text-muted-foreground" />
-          <p className="text-sm font-medium text-muted-foreground">Daily Blocks</p>
-        </div>
-        <div className="flex items-end gap-2 h-24">
-          {weekData.map((day) => (
-            <div key={day.day} className="flex-1 flex flex-col items-center gap-1">
-              <div className="w-full flex flex-col items-center justify-end h-16">
-                {day.blocks > 0 && (
-                  <span className="text-xs text-muted-foreground mb-1">{day.blocks}</span>
-                )}
-                <div
-                  className={cn(
-                    "w-full rounded-t transition-all duration-300",
-                    day.isToday ? "bg-primary" : "bg-primary/50",
-                    day.isFuture && "bg-secondary"
-                  )}
-                  style={{
-                    height: day.isFuture ? '4px' : `${Math.max((day.blocks / maxBlocks) * 100, day.blocks > 0 ? 10 : 4)}%`
-                  }}
-                />
-              </div>
-              <span className={cn(
-                "text-xs",
-                day.isToday ? "font-medium text-primary" : "text-muted-foreground"
-              )}>
-                {day.day}
-              </span>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-muted-foreground" />
+            <p className="text-sm font-medium text-muted-foreground">Daily Activity</p>
+          </div>
+          {/* Legend */}
+          <div className="flex items-center gap-3 text-xs">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-sm bg-primary" />
+              <span className="text-muted-foreground">Blocks</span>
             </div>
-          ))}
+            <div className="flex items-center gap-1.5">
+              <div className="w-2.5 h-2.5 rounded-sm bg-orange-500" />
+              <span className="text-muted-foreground">Bypasses</span>
+            </div>
+          </div>
         </div>
+        <div className="flex items-end gap-3">
+          {weekData.map((day) => {
+            const maxBarHeight = 72 // pixels
+            const blocksHeight = day.isFuture ? 2 : Math.max((day.blocks / maxValue) * maxBarHeight, day.blocks > 0 ? 6 : 2)
+            const bypassesHeight = day.isFuture ? 2 : Math.max((day.bypasses / maxValue) * maxBarHeight, day.bypasses > 0 ? 6 : 2)
+
+            return (
+              <div key={day.day} className="flex-1 flex flex-col items-center gap-1">
+                <div className="w-full flex items-end justify-center gap-1" style={{ height: maxBarHeight + 16 }}>
+                  {/* Blocks bar */}
+                  <div className="flex-1 flex flex-col items-center justify-end h-full">
+                    {day.blocks > 0 && (
+                      <span className="text-[10px] text-muted-foreground mb-0.5">{day.blocks}</span>
+                    )}
+                    <div
+                      className={cn(
+                        "w-full rounded-t transition-all duration-300",
+                        day.isToday ? "bg-primary" : "bg-primary/60",
+                        day.isFuture && "bg-secondary"
+                      )}
+                      style={{ height: `${blocksHeight}px` }}
+                    />
+                  </div>
+                  {/* Bypasses bar */}
+                  <div className="flex-1 flex flex-col items-center justify-end h-full">
+                    {day.bypasses > 0 && (
+                      <span className="text-[10px] text-muted-foreground mb-0.5">{day.bypasses}</span>
+                    )}
+                    <div
+                      className={cn(
+                        "w-full rounded-t transition-all duration-300",
+                        day.isToday ? "bg-orange-500" : "bg-orange-500/60",
+                        day.isFuture && "bg-secondary"
+                      )}
+                      style={{ height: `${bypassesHeight}px` }}
+                    />
+                  </div>
+                </div>
+                <span className={cn(
+                  "text-xs",
+                  day.isToday ? "font-medium text-primary" : "text-muted-foreground"
+                )}>
+                  {day.day}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TopSitesDisplay({ settings }: { settings: SordinoSettings }) {
+  // Combine today's stats with weekly stats
+  const getCombinedSiteStats = () => {
+    const combined: { [site: string]: { blocks: number; bypasses: number } } = {}
+
+    // Add weekly stats
+    if (settings.weeklyStats.siteStats) {
+      for (const [site, stats] of Object.entries(settings.weeklyStats.siteStats)) {
+        combined[site] = { ...stats }
+      }
+    }
+
+    // Add today's stats
+    if (settings.stats.siteStats) {
+      for (const [site, stats] of Object.entries(settings.stats.siteStats)) {
+        if (combined[site]) {
+          combined[site] = {
+            blocks: combined[site].blocks + stats.blocks,
+            bypasses: combined[site].bypasses + stats.bypasses,
+          }
+        } else {
+          combined[site] = { ...stats }
+        }
+      }
+    }
+
+    return combined
+  }
+
+  const siteStats = getCombinedSiteStats()
+
+  // Get top blocked sites
+  const topBlocked = Object.entries(siteStats)
+    .filter(([_, stats]) => stats.blocks > 0)
+    .sort((a, b) => b[1].blocks - a[1].blocks)
+    .slice(0, 5)
+
+  // Get top bypassed sites
+  const topBypassed = Object.entries(siteStats)
+    .filter(([_, stats]) => stats.bypasses > 0)
+    .sort((a, b) => b[1].bypasses - a[1].bypasses)
+    .slice(0, 5)
+
+  if (topBlocked.length === 0 && topBypassed.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-secondary/30 p-6 text-center">
+        <p className="text-sm text-muted-foreground">No site activity recorded yet this week.</p>
+        <p className="text-xs text-muted-foreground/70 mt-1">Stats will appear here as you browse.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-4">
+      {/* Most Blocked */}
+      <div className="rounded-xl border border-border bg-secondary/30 p-4">
+        <p className="text-sm font-medium text-muted-foreground mb-3">Most Blocked</p>
+        {topBlocked.length === 0 ? (
+          <p className="text-xs text-muted-foreground/70 italic">No blocks yet</p>
+        ) : (
+          <div className="space-y-2">
+            {topBlocked.map(([site, stats], index) => (
+              <div key={site} className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs text-muted-foreground/60 w-4">{index + 1}.</span>
+                  <span className="text-sm truncate">{site}</span>
+                </div>
+                <span className="text-sm font-medium text-primary ml-2">{stats.blocks}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Most Bypassed */}
+      <div className="rounded-xl border border-border bg-secondary/30 p-4">
+        <p className="text-sm font-medium text-muted-foreground mb-3">Most Bypassed</p>
+        {topBypassed.length === 0 ? (
+          <p className="text-xs text-muted-foreground/70 italic">No bypasses yet</p>
+        ) : (
+          <div className="space-y-2">
+            {topBypassed.map(([site, stats], index) => (
+              <div key={site} className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs text-muted-foreground/60 w-4">{index + 1}.</span>
+                  <span className="text-sm truncate">{site}</span>
+                </div>
+                <span className="text-sm font-medium text-orange-500 ml-2">{stats.bypasses}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -30,7 +30,14 @@ export interface BypassState {
     site: string
     expiresAt: number // timestamp
   } | null
-  lastEmergencyRefresh: string | null // "2026-01-06" format - tracks weekly refresh
+  lastEmergencyRefresh: string | null // "2026-01-06" format - tracks daily refresh availability
+}
+
+export interface SiteStats {
+  [site: string]: {
+    blocks: number
+    bypasses: number
+  }
 }
 
 export interface WeeklyStats {
@@ -40,12 +47,15 @@ export interface WeeklyStats {
     blocksTriggered: number
     bypassesUsed: number
   }[]
+  siteStats: SiteStats // Per-site tracking for "most blocked/bypassed"
+  emergencyRefreshesUsed: number // Count of emergency refreshes this week
 }
 
 export interface Stats {
   date: string // "2026-01-06"
   blocksTriggered: number
   bypassesUsed: number
+  siteStats: SiteStats // Per-site tracking for today
 }
 
 export interface SordinoSettings {
@@ -136,13 +146,19 @@ export const DEFAULT_SCHEDULES: Schedule[] = [
   },
 ]
 
-// Get Monday of the current week
+// Get local date string in YYYY-MM-DD format (uses local timezone, not UTC)
+export function getLocalDateString(date: Date = new Date()): string {
+  return date.toLocaleDateString('en-CA') // en-CA gives YYYY-MM-DD format
+}
+
+// Get Monday of the current week (local timezone)
 function getWeekStart(): string {
   const now = new Date()
   const day = now.getDay()
   const diff = now.getDate() - day + (day === 0 ? -6 : 1) // Adjust for Sunday
-  const monday = new Date(now.setDate(diff))
-  return monday.toISOString().split('T')[0]
+  const monday = new Date(now)
+  monday.setDate(diff)
+  return getLocalDateString(monday)
 }
 
 export const DEFAULT_SETTINGS: SordinoSettings = {
@@ -157,18 +173,21 @@ export const DEFAULT_SETTINGS: SordinoSettings = {
   },
   bypassState: {
     quickBypassesUsed: 0,
-    lastResetDate: new Date().toISOString().split('T')[0],
+    lastResetDate: getLocalDateString(),
     activeBypass: null,
     lastEmergencyRefresh: null,
   },
   stats: {
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateString(),
     blocksTriggered: 0,
     bypassesUsed: 0,
+    siteStats: {},
   },
   weeklyStats: {
     weekStart: getWeekStart(),
     days: [],
+    siteStats: {},
+    emergencyRefreshesUsed: 0,
   },
 }
 

@@ -21,10 +21,13 @@ function mergeWithDefaults(stored: Partial<SordinoSettings>): SordinoSettings {
     stats: {
       ...DEFAULT_SETTINGS.stats,
       ...stored.stats,
+      siteStats: stored.stats?.siteStats ?? DEFAULT_SETTINGS.stats.siteStats,
     },
     weeklyStats: {
       ...DEFAULT_SETTINGS.weeklyStats,
       ...stored.weeklyStats,
+      siteStats: stored.weeklyStats?.siteStats ?? DEFAULT_SETTINGS.weeklyStats.siteStats,
+      emergencyRefreshesUsed: stored.weeklyStats?.emergencyRefreshesUsed ?? DEFAULT_SETTINGS.weeklyStats.emergencyRefreshesUsed,
     },
     // Arrays should use stored values if they exist, otherwise defaults
     schedules: stored.schedules ?? DEFAULT_SETTINGS.schedules,
