@@ -124,14 +124,7 @@ function App() {
       {/* Header */}
       <div className="relative px-4 pt-4 pb-3 flex items-center justify-between border-b border-border/50">
         <div className="flex items-center gap-2">
-          <svg viewBox="0 0 64 64" fill="none" className="w-6 h-6 text-primary">
-            <path d="M12 32C12 32 16 28 24 28C32 28 36 32 36 32" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-            <path d="M36 26V38" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-            <path d="M36 32H48C50 32 52 30 52 28V36C52 34 50 32 48 32" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <circle cx="48" cy="32" r="4" stroke="currentColor" strokeWidth="2"/>
-            <path d="M8 30V34" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-            <path d="M4 28V36" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
+          <img src="icons/logo.png" alt="Sordino" className="w-6 h-6" />
           <h1 className="font-serif text-lg font-medium tracking-wide text-primary">Sordino</h1>
         </div>
         <button

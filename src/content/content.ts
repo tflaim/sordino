@@ -96,19 +96,11 @@ function createOverlay(status: BlockStatus): HTMLElement {
   const logo = document.createElement('div')
   logo.className = 'sordino-logo'
 
-  const iconSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  iconSvg.setAttribute('viewBox', '0 0 64 64')
-  iconSvg.setAttribute('fill', 'none')
-  iconSvg.setAttribute('class', 'sordino-icon')
-  iconSvg.innerHTML = `
-    <path d="M12 32C12 32 16 28 24 28C32 28 36 32 36 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-    <path d="M36 26V38" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-    <path d="M36 32H48C50 32 52 30 52 28V36C52 34 50 32 48 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="48" cy="32" r="4" stroke="currentColor" stroke-width="2"/>
-    <path d="M8 30V34" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-    <path d="M4 28V36" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-  `
-  logo.appendChild(iconSvg)
+  const iconImg = document.createElement('img')
+  iconImg.src = chrome.runtime.getURL('icons/logo.png')
+  iconImg.alt = 'Sordino'
+  iconImg.className = 'sordino-icon'
+  logo.appendChild(iconImg)
 
   const title = document.createElement('span')
   title.className = 'sordino-title'
