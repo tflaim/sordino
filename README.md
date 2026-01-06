@@ -35,9 +35,15 @@ The goal isn't to cage you. It's to create a moment of mindfulness before you mi
 5. Click **Load unpacked**
 6. Select the `dist/chrome` folder
 
-### Firefox
+### Firefox / Zen
 
-Coming soon.
+1. Download or clone this repository
+2. Run `npm install && npm run build`
+3. Open `about:debugging#/runtime/this-firefox`
+4. Click **Load Temporary Add-on**
+5. Select `dist/firefox/manifest.json`
+
+> **Note**: Temporary add-ons are removed when the browser closes. For permanent installation, the extension needs to be signed by Mozilla or installed in Firefox Developer Edition with `xpinstall.signatures.required` set to `false`.
 
 ## Usage
 
@@ -119,7 +125,7 @@ npm run typecheck
 
 ## Roadmap
 
-- [ ] Firefox extension
+- [x] Firefox extension
 - [ ] Safari extension (requires native app wrapper)
 - [ ] macOS native app with Focus Mode sync
 - [ ] iOS app with Screen Time integration
