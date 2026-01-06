@@ -10,16 +10,35 @@ const BYPASS_DURATION_MS = 5 * 60 * 1000 // 5 minutes
 const countedBlockUrls = new Set<string>()
 
 // Update extension icon badge to reflect blocking state
-async function updateBadge(isBlocking: boolean): Promise<void> {
-  if (isBlocking) {
-    // Green badge when blocking is active
-    await chrome.action.setBadgeText({ text: '●' })
-    await chrome.action.setBadgeBackgroundColor({ color: '#22c55e' }) // green-500
-    await chrome.action.setBadgeTextColor({ color: '#22c55e' })
-  } else {
-    // No badge when inactive
-    await chrome.action.setBadgeText({ text: '' })
+type BadgeState = 'active' | 'paused' | 'inactive'
+
+async function updateBadge(state: BadgeState): Promise<void> {
+  switch (state) {
+    case 'active':
+      // Small green dot when blocking is active
+      await chrome.action.setBadgeText({ text: ' ' })
+      await chrome.action.setBadgeBackgroundColor({ color: '#22c55e' }) // green-500
+      break
+    case 'paused':
+      // Pause symbol when paused
+      await chrome.action.setBadgeText({ text: '❚❚' })
+      await chrome.action.setBadgeBackgroundColor({ color: '#eab308' }) // yellow-500
+      break
+    case 'inactive':
+      // Small grey dot when inactive
+      await chrome.action.setBadgeText({ text: ' ' })
+      await chrome.action.setBadgeBackgroundColor({ color: '#6b7280' }) // gray-500
+      break
   }
+}
+
+// Determine badge state from settings
+function getBadgeState(settings: SordinoSettings): BadgeState {
+  const isPaused = settings.blockState.pausedUntil && Date.now() < settings.blockState.pausedUntil
+  if (isPaused) return 'paused'
+
+  const blockStatus = shouldBlock(settings)
+  return blockStatus.shouldBlock ? 'active' : 'inactive'
 }
 
 // Check if URL matches any blocked site
@@ -199,8 +218,7 @@ async function handleMessage(message: MessageType): Promise<unknown> {
           pausedUntil: null, // Clear pause when manually toggling
         },
       }))
-      const newBlockStatus = shouldBlock(updated)
-      await updateBadge(newBlockStatus.shouldBlock)
+      await updateBadge(getBadgeState(updated))
       return { success: true }
     }
 
@@ -212,8 +230,7 @@ async function handleMessage(message: MessageType): Promise<unknown> {
           pausedUntil: message.until,
         },
       }))
-      const newBlockStatus = shouldBlock(updated)
-      await updateBadge(newBlockStatus.shouldBlock)
+      await updateBadge(getBadgeState(updated))
       return { success: true }
     }
 
@@ -231,7 +248,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     const blockStatus = shouldBlock(settings)
 
     // Update block state and badge
-    await updateSettings((s) => ({
+    const updated = await updateSettings((s) => ({
       ...s,
       blockState: {
         ...s.blockState,
@@ -239,7 +256,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         activeSchedule: blockStatus.reason ?? null,
       },
     }))
-    await updateBadge(blockStatus.shouldBlock)
+    await updateBadge(getBadgeState(updated))
 
     // Clear expired bypasses
     if (settings.bypassState.activeBypass) {
@@ -261,7 +278,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   const settings = await checkBypassReset()
   const blockStatus = shouldBlock(settings)
 
-  await updateSettings((s) => ({
+  const updated = await updateSettings((s) => ({
     ...s,
     blockState: {
       ...s.blockState,
@@ -269,14 +286,13 @@ chrome.runtime.onInstalled.addListener(async () => {
       activeSchedule: blockStatus.reason ?? null,
     },
   }))
-  await updateBadge(blockStatus.shouldBlock)
+  await updateBadge(getBadgeState(updated))
 })
 
 // Initialize badge on service worker start (handles browser restart)
 ;(async () => {
   const settings = await getSettings()
-  const blockStatus = shouldBlock(settings)
-  await updateBadge(blockStatus.shouldBlock)
+  await updateBadge(getBadgeState(settings))
 })()
 
 console.log('Sordino background service worker initialized')

@@ -3,21 +3,51 @@ import { getSettings, subscribeToSettings } from '../shared/storage'
 import { shouldBlock, getActiveSchedule, formatEndTime, getTimeRemainingInSchedule } from '../shared/schedule'
 import type { SordinoSettings } from '../shared/types'
 import { cn } from '../shared/utils'
-import { Settings, Plus, Pause, Play, Clock } from 'lucide-react'
+import { Settings, Plus, Pause, Play, Clock, Timer } from 'lucide-react'
 
 const MAX_QUICK_BYPASSES = 3
 
 type BlockingStatus = 'active' | 'paused' | 'inactive'
 
+// Format milliseconds as "Xm Xs"
+function formatTimeRemaining(ms: number): string {
+  if (ms <= 0) return '0s'
+  const totalSeconds = Math.ceil(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes > 0) {
+    return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
+  }
+  return `${seconds}s`
+}
+
 function App() {
   const [settings, setSettings] = useState<SordinoSettings | null>(null)
   const [showPauseMenu, setShowPauseMenu] = useState(false)
+  const [bypassTimeLeft, setBypassTimeLeft] = useState<number | null>(null)
 
   useEffect(() => {
     getSettings().then(setSettings)
     const unsubscribe = subscribeToSettings(setSettings)
     return unsubscribe
   }, [])
+
+  // Countdown timer for active bypass
+  useEffect(() => {
+    if (!settings?.bypassState.activeBypass) {
+      setBypassTimeLeft(null)
+      return
+    }
+
+    const updateCountdown = () => {
+      const remaining = settings.bypassState.activeBypass!.expiresAt - Date.now()
+      setBypassTimeLeft(remaining > 0 ? remaining : null)
+    }
+
+    updateCountdown()
+    const interval = setInterval(updateCountdown, 1000)
+    return () => clearInterval(interval)
+  }, [settings?.bypassState.activeBypass])
 
   if (!settings) {
     return (
@@ -190,6 +220,21 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* Active Bypass Banner */}
+      {bypassTimeLeft !== null && settings.bypassState.activeBypass && (
+        <div className="px-4 pb-3">
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-orange-500/10 border border-orange-500/30">
+            <Timer className="w-4 h-4 text-orange-500 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-orange-500">Bypass active</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {settings.bypassState.activeBypass.site} • {formatTimeRemaining(bypassTimeLeft)} left
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="px-4 pb-4">
