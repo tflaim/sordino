@@ -405,6 +405,12 @@ function injectStyles(): void {
 function showOverlay(status: BlockStatus): void {
   if (overlayElement) return
 
+  // Wait for document.body to exist (content script runs at document_start)
+  if (!document.body) {
+    document.addEventListener('DOMContentLoaded', () => showOverlay(status), { once: true })
+    return
+  }
+
   injectStyles()
   overlayElement = createOverlay(status)
   document.body.appendChild(overlayElement)
@@ -441,22 +447,32 @@ async function checkAndBlock(): Promise<void> {
   }
 }
 
-// Initial check
-checkAndBlock()
+// Wait for DOM to be ready before initial check
+function init() {
+  // Initial check
+  checkAndBlock()
 
-// Re-check on visibility change (user returns to tab)
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
-    checkAndBlock()
-  }
-})
+  // Re-check on visibility change (user returns to tab)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      checkAndBlock()
+    }
+  })
 
-// Re-check periodically (for bypass expiration)
-setInterval(checkAndBlock, 30000)
+  // Re-check periodically (for bypass expiration)
+  setInterval(checkAndBlock, 30000)
 
-// Listen for settings changes
-chrome.runtime.onMessage.addListener((message) => {
-  if (message.type === 'SETTINGS_UPDATE') {
-    checkAndBlock()
-  }
-})
+  // Listen for settings changes
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.type === 'SETTINGS_UPDATE') {
+      checkAndBlock()
+    }
+  })
+}
+
+// Content script runs at document_start, so DOM might not be ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init, { once: true })
+} else {
+  init()
+}

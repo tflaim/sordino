@@ -110,9 +110,9 @@ function App() {
           {/* Categories */}
           <div className="mb-6">
             <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-3">Categories</h3>
-            <div className="flex flex-wrap gap-3">
+            <div className="space-y-3">
               {settings.categories.map((category) => (
-                <CategoryToggle
+                <CategoryCard
                   key={category.id}
                   category={category}
                   onToggle={() => {
@@ -120,6 +120,14 @@ function App() {
                       ...s,
                       categories: s.categories.map((cat) =>
                         cat.id === category.id ? { ...cat, enabled: !cat.enabled } : cat
+                      ),
+                    }))
+                  }}
+                  onUpdate={(updated) => {
+                    updateSettings((s) => ({
+                      ...s,
+                      categories: s.categories.map((cat) =>
+                        cat.id === category.id ? updated : cat
                       ),
                     }))
                   }}
@@ -448,28 +456,102 @@ function AddScheduleButton({ onAdd }: { onAdd: (schedule: Schedule) => void }) {
   )
 }
 
-function CategoryToggle({ category, onToggle }: { category: Category; onToggle: () => void }) {
+function CategoryCard({
+  category,
+  onToggle,
+  onUpdate,
+}: {
+  category: Category
+  onToggle: () => void
+  onUpdate: (category: Category) => void
+}) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [newSite, setNewSite] = useState('')
+
+  const handleAddSite = () => {
+    const cleanSite = newSite.trim().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
+    if (!cleanSite || category.sites.includes(cleanSite)) return
+    onUpdate({ ...category, sites: [...category.sites, cleanSite] })
+    setNewSite('')
+  }
+
+  const handleRemoveSite = (site: string) => {
+    onUpdate({ ...category, sites: category.sites.filter((s) => s !== site) })
+  }
+
   return (
-    <button
-      onClick={onToggle}
-      className={cn(
-        "flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-all",
-        category.enabled
-          ? "bg-primary/10 border-primary/30 text-foreground"
-          : "bg-secondary/30 border-border/50 text-muted-foreground"
-      )}
-    >
-      <div className={cn(
-        "w-4 h-4 rounded border-2 flex items-center justify-center transition-colors",
-        category.enabled
-          ? "bg-primary border-primary text-primary-foreground"
-          : "border-muted-foreground"
-      )}>
-        {category.enabled && <Check className="w-2.5 h-2.5" />}
+    <div className={cn(
+      "rounded-xl border transition-all",
+      category.enabled
+        ? "bg-secondary/30 border-border"
+        : "bg-transparent border-border/50 opacity-60"
+    )}>
+      {/* Header */}
+      <div className="flex items-center justify-between p-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onToggle}
+            className={cn(
+              "w-5 h-5 rounded border-2 flex items-center justify-center transition-colors",
+              category.enabled
+                ? "bg-primary border-primary text-primary-foreground"
+                : "border-muted-foreground"
+            )}
+          >
+            {category.enabled && <Check className="w-3 h-3" />}
+          </button>
+          <div>
+            <p className="font-medium">{category.name}</p>
+            <p className="text-sm text-muted-foreground">{category.sites.length} sites</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+        >
+          {isExpanded ? 'Hide' : 'Show'} sites
+        </button>
       </div>
-      <span className="text-sm font-medium">{category.name}</span>
-      <span className="text-xs text-muted-foreground">({category.sites.length})</span>
-    </button>
+
+      {/* Expandable sites list */}
+      {isExpanded && (
+        <div className="px-4 pb-4 border-t border-border/50 pt-3">
+          <div className="space-y-2 mb-3">
+            {category.sites.map((site) => (
+              <div
+                key={site}
+                className="flex items-center justify-between px-3 py-2 rounded-lg bg-background/50 border border-border/30"
+              >
+                <span className="text-sm">{site}</span>
+                <button
+                  onClick={() => handleRemoveSite(site)}
+                  className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newSite}
+              onChange={(e) => setNewSite(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddSite()}
+              placeholder="Add site..."
+              className="flex-1 px-3 py-2 rounded-lg bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
+            <button
+              onClick={handleAddSite}
+              disabled={!newSite.trim()}
+              className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

@@ -124,9 +124,9 @@ function App() {
               <div className="flex items-center gap-2">
                 <div className={cn(
                   "w-2.5 h-2.5 rounded-full",
-                  status === 'active' && "bg-primary animate-pulse",
+                  status === 'active' && "bg-green-500 animate-[pulse_1.5s_ease-in-out_infinite] shadow-[0_0_8px_rgba(34,197,94,0.6)]",
                   status === 'paused' && "bg-yellow-500",
-                  status === 'inactive' && "bg-muted-foreground"
+                  status === 'inactive' && "bg-muted-foreground/50"
                 )} />
                 <span className={cn(
                   "text-sm font-medium uppercase tracking-wider",
@@ -205,7 +205,7 @@ function App() {
           />
           <StatCard
             value={`${bypassesRemaining}/${MAX_QUICK_BYPASSES}`}
-            label="remaining"
+            label="bypasses left"
             highlight={bypassesRemaining === 0}
           />
         </div>
