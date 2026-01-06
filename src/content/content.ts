@@ -205,6 +205,7 @@ function createOverlay(status: BlockStatus): HTMLElement {
 
 function injectStyles(): void {
   if (document.getElementById('sordino-styles')) return
+  if (!document.head) return // Safety check
 
   const styles = document.createElement('style')
   styles.id = 'sordino-styles'
@@ -405,8 +406,8 @@ function injectStyles(): void {
 function showOverlay(status: BlockStatus): void {
   if (overlayElement) return
 
-  // Wait for document.body to exist (content script runs at document_start)
-  if (!document.body) {
+  // Wait for document.body and document.head to exist (content script runs at document_start)
+  if (!document.body || !document.head) {
     document.addEventListener('DOMContentLoaded', () => showOverlay(status), { once: true })
     return
   }
