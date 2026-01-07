@@ -69,7 +69,7 @@ _Coming Soon_
 
 If Sordino helps you stay focused, consider buying me a coffee. It funds late-night vibe coding sessions and keeps this project free and ad-free.
 
-<a href="https://www.buymeacoffee.com/tommyflaim">
+<a href="https://buymeacoffee.com/tflaim">
   <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50" />
 </a>
 
