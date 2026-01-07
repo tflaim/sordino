@@ -296,6 +296,7 @@ function injectStyles(): void {
       height: 100vh !important;
       z-index: 2147483647 !important;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+      font-size: 16px !important; /* Reset rem baseline - isolates from site CSS while preserving browser zoom */
       animation: sordino-fade-in 0.4s ease-out !important;
     }
 
