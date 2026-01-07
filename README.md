@@ -44,22 +44,24 @@ Sordino runs entirely on your machine:
 
 **[Chrome Web Store](https://chrome.google.com/webstore)** _Coming Soon (In Review)_
 
-1. Clone this repository
-2. Run `npm install && npm run build`
+**Manual install:**
+1. Download [sordino-chrome-v1.0.0.zip](https://github.com/tflaim/sordino/releases/download/v1.0.0/sordino-chrome-v1.0.0.zip)
+2. Unzip it
 3. Open `chrome://extensions`
 4. Enable **Developer mode** (top right)
-5. Click **Load unpacked** → select `dist/chrome`
+5. Click **Load unpacked** → select the unzipped folder
 
 ### Firefox
 
 **[Firefox Add-ons](https://addons.mozilla.org)** _Coming Soon (In Review)_
 
-1. Clone this repository
-2. Run `npm install && npm run build`
+**Manual install:**
+1. Download [sordino-firefox-v1.0.0.zip](https://github.com/tflaim/sordino/releases/download/v1.0.0/sordino-firefox-v1.0.0.zip)
+2. Unzip it
 3. Open `about:debugging#/runtime/this-firefox`
-4. Click **Load Temporary Add-on** → select `dist/firefox/manifest.json`
+4. Click **Load Temporary Add-on** → select `manifest.json` from the unzipped folder
 
-> **Note**: Temporary add-ons reset when Firefox closes. For permanent install, use Firefox Developer Edition with `xpinstall.signatures.required` set to `false`.
+> **Note**: Firefox temporary add-ons reset when the browser closes. Store version coming soon.
 
 ### Safari
 
