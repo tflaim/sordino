@@ -1,4 +1,5 @@
-import { getRandomQuote } from '../shared/quotes'
+import { FOCUS_QUOTES } from '../shared/quotes'
+import { getRandomSnarkyTitle } from '../shared/snarky-titles'
 
 interface BlockStatus {
   isBlocked: boolean
@@ -9,13 +10,15 @@ interface BlockStatus {
 
 let overlayElement: HTMLElement | null = null
 let isChecking = false
-let hasRecordedBlock = false // Track if we've already recorded a block for this page
 let bypassCountdownInterval: number | null = null
+let quoteRotationInterval: number | null = null
+let currentQuoteIndex: number = -1
 let shownBypassNotifications = new Set<number>() // Track which bypass time thresholds we've shown
 let shownPauseNotifications = new Set<number>() // Track which pause time thresholds we've shown
 
-// Sanitize text to prevent XSS - strip any HTML tags
-function sanitizeText(text: string): string {
+// Defense-in-depth text sanitizer. While we use textContent for output (which auto-escapes),
+// this provides an extra safety layer in case code changes later to use innerHTML.
+function ensureTextOnly(text: string): string {
   const div = document.createElement('div')
   div.textContent = text
   return div.textContent || ''
@@ -72,9 +75,53 @@ function getSiteFromUrl(): string {
   }
 }
 
+// Get a random quote index, avoiding the current one
+function getNextQuoteIndex(): number {
+  let newIndex: number
+  do {
+    newIndex = Math.floor(Math.random() * FOCUS_QUOTES.length)
+  } while (newIndex === currentQuoteIndex && FOCUS_QUOTES.length > 1)
+  return newIndex
+}
+
+// Rotate to the next quote with animation
+function rotateQuote(): void {
+  const container = document.getElementById('sordino-quote-container')
+  const textEl = document.getElementById('sordino-quote-text')
+  const authorEl = document.getElementById('sordino-quote-author')
+
+  if (!container || !textEl || !authorEl) return
+
+  // Start fade out
+  container.classList.add('sordino-quote-fading')
+  container.classList.remove('sordino-quote-entering')
+
+  // After fade out, update content and fade in
+  setTimeout(() => {
+    // Guard: overlay may have been removed during fade-out
+    if (!document.getElementById('sordino-quote-container')) return
+
+    currentQuoteIndex = getNextQuoteIndex()
+    const newQuote = FOCUS_QUOTES[currentQuoteIndex]
+    textEl.textContent = `"${ensureTextOnly(newQuote.text)}"`
+    authorEl.textContent = `— ${ensureTextOnly(newQuote.author)}`
+
+    container.classList.remove('sordino-quote-fading')
+    container.classList.add('sordino-quote-entering')
+
+    // Clean up entering class after animation
+    setTimeout(() => {
+      if (!document.getElementById('sordino-quote-container')) return
+      container.classList.remove('sordino-quote-entering')
+    }, 400)
+  }, 400)
+}
+
 // Create overlay using safe DOM manipulation (no innerHTML with user data)
 function createOverlay(status: BlockStatus): HTMLElement {
-  const quote = getRandomQuote()
+  // Get initial quote and track its index
+  currentQuoteIndex = getNextQuoteIndex()
+  const quote = FOCUS_QUOTES[currentQuoteIndex]
   const site = getSiteFromUrl()
 
   const overlay = document.createElement('div')
@@ -109,18 +156,51 @@ function createOverlay(status: BlockStatus): HTMLElement {
   logo.appendChild(title)
   content.appendChild(logo)
 
+  // Snarky title - music-themed tagline
+  const snarky = getRandomSnarkyTitle()
+  const snarkyContainer = document.createElement('div')
+  snarkyContainer.className = 'sordino-snarky-container'
+
+  const snarkyTitle = document.createElement('p')
+  snarkyTitle.className = 'sordino-snarky-title'
+
+  // Add icon if present
+  if (snarky.icon) {
+    const iconImg = document.createElement('img')
+    iconImg.src = snarky.icon
+    iconImg.className = 'sordino-snarky-icon'
+    iconImg.alt = ''
+    snarkyTitle.appendChild(iconImg)
+  }
+
+  const titleText = document.createTextNode(snarky.title)
+  snarkyTitle.appendChild(titleText)
+  snarkyContainer.appendChild(snarkyTitle)
+
+  if (snarky.subtitle) {
+    const snarkySubtitle = document.createElement('p')
+    snarkySubtitle.className = 'sordino-snarky-subtitle'
+    snarkySubtitle.textContent = snarky.subtitle
+    snarkyContainer.appendChild(snarkySubtitle)
+  }
+
+  content.appendChild(snarkyContainer)
+
   // Quote section - SAFE: using textContent
   const quoteDiv = document.createElement('div')
   quoteDiv.className = 'sordino-quote'
+  quoteDiv.id = 'sordino-quote-container'
 
   const quoteText = document.createElement('p')
   quoteText.className = 'sordino-quote-text'
-  quoteText.textContent = `"${sanitizeText(quote.text)}"`
+  quoteText.id = 'sordino-quote-text'
+  quoteText.textContent = `"${ensureTextOnly(quote.text)}"`
   quoteDiv.appendChild(quoteText)
 
   const quoteAuthor = document.createElement('p')
   quoteAuthor.className = 'sordino-quote-author'
-  quoteAuthor.textContent = `— ${sanitizeText(quote.author)}`
+  quoteAuthor.id = 'sordino-quote-author'
+  quoteAuthor.textContent = `— ${ensureTextOnly(quote.author)}`
   quoteDiv.appendChild(quoteAuthor)
   content.appendChild(quoteDiv)
 
@@ -130,7 +210,7 @@ function createOverlay(status: BlockStatus): HTMLElement {
 
   const blockedSite = document.createElement('p')
   blockedSite.className = 'sordino-blocked-site'
-  blockedSite.textContent = `${sanitizeText(site)} is blocked`
+  blockedSite.textContent = `${ensureTextOnly(site)} is blocked`
   card.appendChild(blockedSite)
 
   const reason = document.createElement('p')
@@ -143,7 +223,7 @@ function createOverlay(status: BlockStatus): HTMLElement {
 
   // CRITICAL: sanitize status.reason as it comes from user-controlled schedule names
   const reasonText = document.createTextNode(
-    ` ${sanitizeText(status.reason || 'Blocked')}${status.timeRemaining ? ` • ${sanitizeText(status.timeRemaining)}` : ''}`
+    ` ${ensureTextOnly(status.reason || 'Blocked')}${status.timeRemaining ? ` • ${ensureTextOnly(status.timeRemaining)}` : ''}`
   )
   reason.appendChild(reasonText)
   card.appendChild(reason)
@@ -234,6 +314,16 @@ function injectStyles(): void {
       50% { opacity: 0.6; transform: translate(-50%, -50%) scale(1.1); }
     }
 
+    @keyframes sordino-quote-fade-out {
+      from { opacity: 1; transform: translateY(0); }
+      to { opacity: 0; transform: translateY(-10px); }
+    }
+
+    @keyframes sordino-quote-fade-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
     .sordino-container {
       position: relative !important;
       width: 100% !important;
@@ -284,7 +374,7 @@ function injectStyles(): void {
       display: flex !important;
       align-items: center !important;
       gap: 0.75rem !important;
-      margin-bottom: 2.5rem !important;
+      margin-bottom: 1rem !important;
     }
 
     .sordino-icon {
@@ -302,9 +392,57 @@ function injectStyles(): void {
       text-transform: uppercase !important;
     }
 
+    .sordino-snarky-container {
+      text-align: center !important;
+      margin-top: 1.5rem !important;
+      margin-bottom: 2.5rem !important;
+    }
+
+    .sordino-snarky-title {
+      font-family: Georgia, 'Times New Roman', serif !important;
+      font-size: 2.5rem !important;
+      font-weight: 500 !important;
+      font-style: italic !important;
+      color: #e8dcc8 !important;
+      letter-spacing: 0.02em !important;
+      margin: 0 !important;
+      line-height: 1.3 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 0.75rem !important;
+    }
+
+    .sordino-snarky-icon {
+      height: 2.5rem !important;
+      width: auto !important;
+    }
+
+    .sordino-snarky-subtitle {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+      font-size: 1rem !important;
+      font-weight: 400 !important;
+      color: #9a8b7a !important;
+      margin: 0.75rem 0 0 0 !important;
+      letter-spacing: 0.01em !important;
+    }
+
     .sordino-quote {
       margin-bottom: 2.5rem !important;
       padding: 0 1rem !important;
+      transition: opacity 0.4s ease, transform 0.4s ease !important;
+      min-height: 140px !important;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: center !important;
+    }
+
+    .sordino-quote.sordino-quote-fading {
+      animation: sordino-quote-fade-out 0.4s ease forwards !important;
+    }
+
+    .sordino-quote.sordino-quote-entering {
+      animation: sordino-quote-fade-in 0.4s ease forwards !important;
     }
 
     .sordino-quote-text {
@@ -413,6 +551,12 @@ function showOverlay(status: BlockStatus): void {
 
   // Prevent scrolling
   document.body.style.overflow = 'hidden'
+
+  // Start quote rotation (every 5 seconds)
+  if (quoteRotationInterval) {
+    clearInterval(quoteRotationInterval)
+  }
+  quoteRotationInterval = window.setInterval(rotateQuote, 5000)
 }
 
 function removeOverlay(): void {
@@ -420,6 +564,12 @@ function removeOverlay(): void {
     overlayElement.remove()
     overlayElement = null
     document.body.style.overflow = ''
+  }
+
+  // Stop quote rotation
+  if (quoteRotationInterval) {
+    clearInterval(quoteRotationInterval)
+    quoteRotationInterval = null
   }
 }
 
@@ -589,7 +739,6 @@ async function checkAndBlock(): Promise<void> {
       }
     } else {
       removeOverlay()
-      hasRecordedBlock = false // Reset when no longer blocked
       // Start countdown checking when not blocked (may have active bypass or pause)
       if (!bypassCountdownInterval) {
         bypassCountdownInterval = window.setInterval(checkCountdowns, 1000)

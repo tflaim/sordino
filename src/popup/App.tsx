@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import { getSettings, subscribeToSettings } from '../shared/storage'
-import { shouldBlock, getActiveSchedule, formatEndTime, getTimeRemainingInSchedule } from '../shared/schedule'
+import { getSettings, updateSettings, subscribeToSettings } from '../shared/storage'
+import { shouldBlock, getActiveSchedule, formatEndTime } from '../shared/schedule'
 import type { SordinoSettings } from '../shared/types'
+import { MAX_QUICK_BYPASSES } from '../shared/types'
 import { cn } from '../shared/utils'
 import { Settings, Plus, Pause, Play, Clock, Timer, X, Check } from 'lucide-react'
-
-const MAX_QUICK_BYPASSES = 3
 
 type BlockingStatus = 'active' | 'paused' | 'inactive' | 'bypass'
 
@@ -301,13 +300,12 @@ function QuickAddSite() {
 
     const cleanSite = site.trim().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
 
-    const settings = await getSettings()
-    const updatedSettings = {
-      ...settings,
-      customSites: [...settings.customSites, cleanSite],
-    }
+    // Use queued updateSettings to prevent race conditions
+    await updateSettings((s) => ({
+      ...s,
+      customSites: [...s.customSites, cleanSite],
+    }))
 
-    await chrome.storage.local.set({ sordino_settings: updatedSettings })
     setSite('')
     setIsOpen(false)
   }

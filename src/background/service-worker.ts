@@ -1,14 +1,52 @@
 import { getSettings, updateSettings } from '../shared/storage'
 import { shouldBlock, getActiveSchedule, formatEndTime } from '../shared/schedule'
 import type { SordinoSettings, MessageType } from '../shared/types'
-import { getLocalDateString } from '../shared/types'
+import { getLocalDateString, MAX_QUICK_BYPASSES, BYPASS_DURATION_MS } from '../shared/types'
 
-const MAX_QUICK_BYPASSES = 3
-const BYPASS_DURATION_MS = 5 * 60 * 1000 // 5 minutes
+// Broadcast settings update to all tabs so content scripts can react immediately
+async function broadcastSettingsUpdate(): Promise<void> {
+  try {
+    const tabs = await chrome.tabs.query({})
+    for (const tab of tabs) {
+      if (tab.id) {
+        chrome.tabs.sendMessage(tab.id, { type: 'SETTINGS_UPDATE' }).catch(() => {
+          // Ignore errors for tabs without content script (chrome://, etc.)
+        })
+      }
+    }
+  } catch (error) {
+    console.warn('Sordino: Failed to broadcast settings update', error)
+  }
+}
 
 // Track URLs that have already been counted as blocks (prevents inflation)
-// Cleared when a new day starts or when bypass is used
-const countedBlockUrls = new Set<string>()
+// Using chrome.storage.session to persist across service worker restarts (MV3)
+// Clears when browser closes (appropriate for daily data)
+async function getCountedBlocks(): Promise<Set<string>> {
+  const result = await chrome.storage.session.get('countedBlockUrls')
+  return new Set(result.countedBlockUrls || [])
+}
+
+async function addCountedBlock(blockKey: string): Promise<void> {
+  const counted = await getCountedBlocks()
+  counted.add(blockKey)
+  await chrome.storage.session.set({ countedBlockUrls: Array.from(counted) })
+}
+
+async function removeCountedBlock(blockKey: string): Promise<void> {
+  const counted = await getCountedBlocks()
+  counted.delete(blockKey)
+  await chrome.storage.session.set({ countedBlockUrls: Array.from(counted) })
+}
+
+async function clearCountedBlocks(): Promise<void> {
+  await chrome.storage.session.remove('countedBlockUrls')
+}
+
+async function hasCountedBlock(blockKey: string): Promise<boolean> {
+  const counted = await getCountedBlocks()
+  return counted.has(blockKey)
+}
 
 // Update extension icon badge to reflect blocking state
 type BadgeState = 'active' | 'paused' | 'inactive' | 'bypass'
@@ -21,8 +59,8 @@ async function updateBadge(state: BadgeState): Promise<void> {
       await chrome.action.setBadgeBackgroundColor({ color: '#22c55e' }) // green-500
       break
     case 'paused':
-      // Pause symbol when paused
-      await chrome.action.setBadgeText({ text: '❚❚' })
+      // Pause indicator (cross-platform safe text)
+      await chrome.action.setBadgeText({ text: 'II' })
       await chrome.action.setBadgeBackgroundColor({ color: '#eab308' }) // yellow-500
       break
     case 'inactive':
@@ -31,8 +69,8 @@ async function updateBadge(state: BadgeState): Promise<void> {
       await chrome.action.setBadgeBackgroundColor({ color: '#6b7280' }) // gray-500
       break
     case 'bypass':
-      // Timer symbol when bypass is active
-      await chrome.action.setBadgeText({ text: '⏱' })
+      // Timer indicator (cross-platform safe text)
+      await chrome.action.setBadgeText({ text: '5m' })
       await chrome.action.setBadgeBackgroundColor({ color: '#f97316' }) // orange-500
       break
   }
@@ -123,7 +161,11 @@ async function checkBypassReset(): Promise<SordinoSettings> {
   const today = getLocalDateString()
   const currentWeekStart = getWeekStart()
 
-  return updateSettings((settings) => {
+  // Check current settings to see if we need to clear session storage
+  const currentSettings = await getSettings()
+  const isNewDay = currentSettings.bypassState.lastResetDate !== today
+
+  const result = await updateSettings((settings) => {
     let updated = { ...settings }
 
     // Check if we need to archive yesterday's stats to weekly
@@ -153,9 +195,6 @@ async function checkBypassReset(): Promise<SordinoSettings> {
       // Merge daily site stats into weekly
       weeklyStats.siteStats = mergeSiteStats(weeklyStats.siteStats || {}, prevStats.siteStats || {})
 
-      // Clear counted URLs on new day
-      countedBlockUrls.clear()
-
       updated = {
         ...updated,
         bypassState: {
@@ -176,6 +215,13 @@ async function checkBypassReset(): Promise<SordinoSettings> {
 
     return updated
   })
+
+  // Clear counted blocks on new day (async operation outside the sync updater)
+  if (isNewDay) {
+    await clearCountedBlocks()
+  }
+
+  return result
 }
 
 // Check if site has active bypass
@@ -235,8 +281,8 @@ async function handleMessage(message: MessageType): Promise<unknown> {
 
       // Record block with per-site tracking
       const blockKey = getBlockKey(message.url)
-      const isFirstBlockForSite = !countedBlockUrls.has(blockKey)
-      countedBlockUrls.add(blockKey)
+      const isFirstBlockForSite = !(await hasCountedBlock(blockKey))
+      await addCountedBlock(blockKey)
 
       await updateSettings((s) => {
         const siteStats = { ...s.stats.siteStats }
@@ -278,7 +324,7 @@ async function handleMessage(message: MessageType): Promise<unknown> {
       const site = getSiteFromUrl(message.site)
 
       // Remove site from counted blocks (allows re-counting if they come back)
-      countedBlockUrls.delete(site)
+      await removeCountedBlock(site)
 
       const updated = await updateSettings((s) => {
         const siteStats = { ...s.stats.siteStats }
@@ -326,6 +372,7 @@ async function handleMessage(message: MessageType): Promise<unknown> {
         },
       }))
       await updateBadge(getBadgeState(updated))
+      await broadcastSettingsUpdate()
       return { success: true }
     }
 
@@ -338,6 +385,7 @@ async function handleMessage(message: MessageType): Promise<unknown> {
         },
       }))
       await updateBadge(getBadgeState(updated))
+      await broadcastSettingsUpdate()
       return { success: true }
     }
 
@@ -371,6 +419,7 @@ async function handleMessage(message: MessageType): Promise<unknown> {
         },
       }))
       await updateBadge(getBadgeState(updated))
+      await broadcastSettingsUpdate()
       return { success: true }
     }
 

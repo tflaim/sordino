@@ -1,11 +1,9 @@
 import { useEffect, useState, useRef } from 'react'
-import { getSettings, saveSettings, subscribeToSettings } from '../shared/storage'
+import { getSettings, updateSettings as updateSettingsQueued, subscribeToSettings } from '../shared/storage'
 import type { SordinoSettings, Schedule, Category, DayOfWeek } from '../shared/types'
-import { TEMPLATE_SCHEDULE_IDS, DEFAULT_SCHEDULES, getLocalDateString } from '../shared/types'
+import { TEMPLATE_SCHEDULE_IDS, DEFAULT_SCHEDULES, getLocalDateString, MAX_QUICK_BYPASSES } from '../shared/types'
 import { cn } from '../shared/utils'
 import { Plus, Trash2, X, Check, ChevronDown, RefreshCw, BarChart3, Settings, Activity, AlertCircle } from 'lucide-react'
-
-const MAX_QUICK_BYPASSES = 3
 
 type Tab = 'settings' | 'usage'
 
@@ -31,9 +29,9 @@ function App() {
 
   const updateSettings = async (updater: (s: SordinoSettings) => SordinoSettings) => {
     if (!settings) return
-    const updated = updater(settings)
+    // Use the queued updateSettings to prevent race conditions
+    const updated = await updateSettingsQueued(updater)
     setSettings(updated)
-    await saveSettings(updated)
   }
 
   if (!settings) {

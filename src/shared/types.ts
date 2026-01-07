@@ -1,5 +1,9 @@
 export type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 
+// Centralized constants
+export const MAX_QUICK_BYPASSES = 3
+export const BYPASS_DURATION_MS = 5 * 60 * 1000 // 5 minutes
+
 export interface Schedule {
   id: string
   name: string
