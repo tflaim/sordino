@@ -67,6 +67,57 @@ Sordino runs entirely on your machine:
 
 _Coming Soon_
 
+### Build from Source
+
+```bash
+git clone https://github.com/tflaim/sordino.git
+cd sordino
+npm install
+npm run build        # builds both Chrome and Firefox
+```
+
+Output: `dist/chrome/` and `dist/firefox/`
+
+## Development
+
+### Tech Stack
+
+- **React 19** + **TypeScript**
+- **Tailwind CSS v4**
+- **Vite** — build tooling
+- **Chrome Extension Manifest V3**
+
+### Project Structure
+
+```
+src/
+├── background/       # Service worker (scheduling, bypass logic, stats)
+├── content/          # Content script (overlay injection)
+├── popup/            # Browser action popup UI
+├── settings/         # Full settings page
+├── shared/           # Shared types, storage, utilities
+│   ├── types.ts      # TypeScript interfaces & constants
+│   ├── storage.ts    # Chrome storage wrapper
+│   ├── schedule.ts   # Schedule matching logic
+│   ├── quotes.ts     # Motivational quotes
+│   └── snarky-titles.ts  # Music-themed titles
+└── index.css         # Global styles
+
+public/
+├── manifest.json         # Chrome manifest
+├── manifest.firefox.json # Firefox manifest
+└── icons/                # Extension icons
+```
+
+### Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start dev server with HMR |
+| `npm run build` | Build for production (Chrome + Firefox) |
+| `npm run build:chrome` | Build Chrome only |
+| `npm run build:firefox` | Build Firefox only |
+
 ## Support
 
 If Sordino helps you stay focused, consider buying me a coffee. It funds late-night vibe coding sessions and keeps this project free and ad-free.
