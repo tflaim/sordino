@@ -1,33 +1,28 @@
 # Sordino
 
+<img width="1024" height="1536" alt="ChatGPT Image Jan 6, 2026, 03_09_42 PM(1)" src="https://github.com/user-attachments/assets/c3467d8d-21c9-46bf-8599-c5cc7ff7a249" />
+
 **Soft-block distracting websites with psychological friction, not force.**
 
 Like a trumpet mute that softens without silencing, Sordino creates gentle resistance to distraction rather than hard blocks you'll just disable.
+
+The goal isn't to cage you. It's to create a moment of mindfulness before you mindlessly scroll.
 
 ![Chrome](https://img.shields.io/badge/Chrome-Manifest%20V3-blue?logo=googlechrome)
 ![Firefox](https://img.shields.io/badge/Firefox-Supported-orange?logo=firefox)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-**[Chrome Web Store](https://chrome.google.com/webstore)** · **[Firefox Add-ons](https://addons.mozilla.org)** *(Coming Soon)*
-
-## Philosophy
-
-Hard blocks don't work. You'll just turn them off when the urge hits. Sordino takes a different approach:
-
-- **Psychological friction** — A beautiful overlay with rotating quotes makes you pause and reflect
-- **Limited bypasses** — 3 quick bypasses per day (5 min each) creates scarcity that makes you think twice
-- **Schedule-aware** — Block during work hours, free on evenings/weekends
-- **Personality** — Music-themed messages with wit, not guilt ("Fermata — That's music for 'you just got paused'")
-
-The goal isn't to cage you. It's to create a moment of mindfulness before you mindlessly scroll.
+**[Chrome Web Store](https://chrome.google.com/webstore)** · **[Firefox Add-ons](https://addons.mozilla.org)**
 
 ## Features
+
+<img width="605" height="728" alt="70204" src="https://github.com/user-attachments/assets/2e3f5562-f716-4c77-83e1-496f3733f4fd" />
 
 - **Soft blocking** — Bypass-able overlays, not hard blocks
 - **Flexible schedules** — Work hours, evenings, always-on, or custom (supports overnight spans)
 - **Daily bypass budget** — 3× 5-minute bypasses, resets at midnight
 - **Pause controls** — 15 min, 1 hour, until tomorrow, or manual override
-- **Music-themed block screen** — 40+ jazz/classical-themed titles with rotating quotes
+- **Music-themed block screen** — 40+ jazz/classical-themed titles with rotating focus-based quotes
 - **Category presets** — Social, Video, and News sites pre-configured
 - **Custom sites** — Add any domain from popup or settings
 - **Stats tracking** — Daily blocks, bypasses, and per-site breakdowns
@@ -46,13 +41,17 @@ Sordino runs entirely on your machine:
 
 ### Chrome
 
+**[Chrome Web Store](https://chrome.google.com/webstore)**
+
 1. Clone this repository
 2. Run `npm install && npm run build`
 3. Open `chrome://extensions`
 4. Enable **Developer mode** (top right)
 5. Click **Load unpacked** → select `dist/chrome`
 
-### Firefox / Zen
+### Firefox
+
+**[Firefox Add-ons](https://addons.mozilla.org)**
 
 1. Clone this repository
 2. Run `npm install && npm run build`
@@ -61,19 +60,10 @@ Sordino runs entirely on your machine:
 
 > **Note**: Temporary add-ons reset when Firefox closes. For permanent install, use Firefox Developer Edition with `xpinstall.signatures.required` set to `false`.
 
-## Development
+### Safari
 
-```bash
-npm install        # Install dependencies
-npm run dev        # Development build with watch
-npm run build      # Production build (Chrome)
-npm run build:firefox  # Production build (Firefox)
-```
-
-## Name
-
-*Sordino* (Italian) — a mute for musical instruments. On a trumpet, it softens the sound without silencing it. That's the vibe: reduce the noise of distraction without pretending you can block it entirely.
+_Coming Soon_
 
 ## License
 
-MIT
+MIT @tflaim
