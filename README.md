@@ -65,6 +65,14 @@ Sordino runs entirely on your machine:
 
 _Coming Soon_
 
+## Support
+
+If Sordino helps you stay focused, consider buying me a coffee. It funds late-night vibe coding sessions and keeps this project free and ad-free.
+
+<a href="https://www.buymeacoffee.com/tommyflaim">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50" />
+</a>
+
 ## License
 
 MIT @tflaim
