@@ -100,7 +100,9 @@ function isUrlBlocked(url: string, settings: SordinoSettings): boolean {
     // Check categories
     for (const category of settings.categories) {
       if (!category.enabled) continue
+      const disabledSites = category.disabledSites ?? []
       for (const site of category.sites) {
+        if (disabledSites.includes(site)) continue // Skip toggled-off sites
         if (hostname === site || hostname.endsWith(`.${site}`)) {
           return true
         }

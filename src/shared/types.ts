@@ -18,6 +18,7 @@ export interface Category {
   name: string
   enabled: boolean
   sites: string[]
+  disabledSites?: string[] // Sites toggled off within this category
 }
 
 export interface BlockState {

@@ -131,8 +131,14 @@ function App() {
               />
             </section>
 
-            {/* Divider */}
-            <div className="border-t border-border mb-10" />
+            {/* Musical divider - quiet/mute themed */}
+            <div className="flex items-center justify-center gap-4 text-primary/40 text-lg mb-10 select-none">
+              <span className="italic">pp</span>
+              <span>♪ ♫ ♪</span>
+              <span>𝄐</span>
+              <span>♫ ♪ ♫</span>
+              <span className="italic">pp</span>
+            </div>
 
             {/* Blocked Sites Section */}
             <section className="mb-10">
@@ -207,8 +213,14 @@ function App() {
               </div>
             </section>
 
-            {/* Divider */}
-            <div className="border-t border-border mb-10" />
+            {/* Musical divider - quiet/mute themed */}
+            <div className="flex items-center justify-center gap-4 text-primary/40 text-lg mb-10 select-none">
+              <span className="italic">pp</span>
+              <span>♪ ♫ ♪</span>
+              <span>𝄐</span>
+              <span>♫ ♪ ♫</span>
+              <span className="italic">pp</span>
+            </div>
 
             {/* Bypass Settings Section */}
             <section className="mb-10">
@@ -568,18 +580,17 @@ function CategoryCard({
   onUpdate: (category: Category) => void
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
-  const [newSite, setNewSite] = useState('')
   const contentRef = useRef<HTMLDivElement>(null)
 
-  const handleAddSite = () => {
-    const cleanSite = newSite.trim().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
-    if (!cleanSite || category.sites.includes(cleanSite)) return
-    onUpdate({ ...category, sites: [...category.sites, cleanSite] })
-    setNewSite('')
-  }
+  const disabledSites = category.disabledSites ?? []
+  const enabledCount = category.sites.length - disabledSites.length
 
-  const handleRemoveSite = (site: string) => {
-    onUpdate({ ...category, sites: category.sites.filter((s) => s !== site) })
+  const handleToggleSite = (site: string) => {
+    const isDisabled = disabledSites.includes(site)
+    const newDisabledSites = isDisabled
+      ? disabledSites.filter((s) => s !== site)
+      : [...disabledSites, site]
+    onUpdate({ ...category, disabledSites: newDisabledSites })
   }
 
   return (
@@ -605,7 +616,9 @@ function CategoryCard({
           </button>
           <div>
             <p className="font-medium">{category.name}</p>
-            <p className="text-sm text-muted-foreground">{category.sites.length} sites</p>
+            <p className="text-sm text-muted-foreground">
+              {enabledCount}/{category.sites.length} sites
+            </p>
           </div>
         </div>
         <button
@@ -631,39 +644,38 @@ function CategoryCard({
       >
         <div className="overflow-hidden">
           <div ref={contentRef} className="px-4 pb-4 border-t border-border/50 pt-3">
-            <div className="space-y-2 mb-3">
-              {category.sites.map((site) => (
-                <div
-                  key={site}
-                  className="flex items-center justify-between px-3 py-2 rounded-lg bg-background/50 border border-border/30"
-                >
-                  <span className="text-sm">{site}</span>
-                  <button
-                    onClick={() => handleRemoveSite(site)}
-                    className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors duration-150 ease-out"
+            <div className="space-y-2">
+              {category.sites.map((site) => {
+                const isEnabled = !disabledSites.includes(site)
+                return (
+                  <div
+                    key={site}
+                    className={cn(
+                      "flex items-center justify-between px-3 py-2 rounded-lg border transition-opacity duration-150",
+                      isEnabled
+                        ? "bg-background/50 border-border/30"
+                        : "bg-transparent border-border/20 opacity-50"
+                    )}
                   >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
+                    <span className="text-sm">{site}</span>
+                    <button
+                      onClick={() => handleToggleSite(site)}
+                      className={cn(
+                        "w-5 h-5 rounded border-2 flex items-center justify-center transition-colors duration-150 ease-out",
+                        isEnabled
+                          ? "bg-primary border-primary text-primary-foreground"
+                          : "border-muted-foreground hover:border-primary/50"
+                      )}
+                    >
+                      {isEnabled && <Check className="w-3 h-3" />}
+                    </button>
+                  </div>
+                )
+              })}
             </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newSite}
-                onChange={(e) => setNewSite(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddSite()}
-                placeholder="Add site..."
-                className="flex-1 px-3 py-2 rounded-lg bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-              <button
-                onClick={handleAddSite}
-                disabled={!newSite.trim()}
-                className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors duration-150 ease-out disabled:opacity-50"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-            </div>
+            <p className="text-xs text-muted-foreground mt-3">
+              Add more sites in Custom Sites below
+            </p>
           </div>
         </div>
       </div>
