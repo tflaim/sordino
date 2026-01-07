@@ -1,6 +1,6 @@
 # Sordino
 
-<img width="1024" height="1536" alt="ChatGPT Image Jan 6, 2026, 03_09_42 PM(1)" src="https://github.com/user-attachments/assets/c3467d8d-21c9-46bf-8599-c5cc7ff7a249" />
+<img width="280" alt="Sordino logo" src="https://github.com/user-attachments/assets/c3467d8d-21c9-46bf-8599-c5cc7ff7a249" />
 
 **Soft-block distracting websites with psychological friction, not force.**
 
@@ -16,7 +16,7 @@ The goal isn't to cage you. It's to create a moment of mindfulness before you mi
 
 ## Features
 
-<img width="605" height="728" alt="70204" src="https://github.com/user-attachments/assets/2e3f5562-f716-4c77-83e1-496f3733f4fd" />
+<img width="400" alt="Sordino block screen" src="https://github.com/user-attachments/assets/2e3f5562-f716-4c77-83e1-496f3733f4fd" />
 
 - **Soft blocking** — Bypass-able overlays, not hard blocks
 - **Flexible schedules** — Work hours, evenings, always-on, or custom (supports overnight spans)
