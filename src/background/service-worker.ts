@@ -391,6 +391,19 @@ async function handleMessage(message: MessageType): Promise<unknown> {
       return { success: true }
     }
 
+    case 'RESUME_BLOCKING': {
+      const updated = await updateSettings((s) => ({
+        ...s,
+        blockState: {
+          ...s.blockState,
+          pausedUntil: null, // Only clear pause, preserve manualOverride
+        },
+      }))
+      await updateBadge(getBadgeState(updated))
+      await broadcastSettingsUpdate()
+      return { success: true }
+    }
+
     case 'EMERGENCY_REFRESH_BYPASSES': {
       if (!canEmergencyRefresh(settings)) {
         return { success: false, reason: 'Already used today' }

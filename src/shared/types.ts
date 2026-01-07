@@ -210,5 +210,6 @@ export type MessageType =
   | { type: 'RECORD_BLOCK' }
   | { type: 'TOGGLE_MANUAL_OVERRIDE'; state: 'on' | 'off' | null }
   | { type: 'PAUSE_BLOCKING'; until: number }
+  | { type: 'RESUME_BLOCKING' }
   | { type: 'EMERGENCY_REFRESH_BYPASSES' }
   | { type: 'CLEAR_BYPASS' }

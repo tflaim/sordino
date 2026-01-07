@@ -108,7 +108,7 @@ function App() {
   }
 
   const handleResume = async () => {
-    await chrome.runtime.sendMessage({ type: 'TOGGLE_MANUAL_OVERRIDE', state: null })
+    await chrome.runtime.sendMessage({ type: 'RESUME_BLOCKING' })
   }
 
   const handleClearBypass = async () => {
