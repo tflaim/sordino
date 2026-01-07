@@ -40,7 +40,7 @@ Sordino runs entirely on your machine:
 - No external API calls
 - No analytics or tracking
 - No data leaves your browser
-- All settings stored locally in `chrome.storage.local`
+- All settings stored in local browser storage
 
 ## Installation
 
