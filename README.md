@@ -16,7 +16,8 @@ The goal isn't to cage you. It's to create a moment of mindfulness before you mi
 
 ## Features
 
-<img width="400" alt="Sordino block screen" src="https://github.com/user-attachments/assets/2e3f5562-f716-4c77-83e1-496f3733f4fd" />
+![sordino-screenshot-1](https://github.com/user-attachments/assets/74de3990-830e-47fc-9dcc-64c6b54bb9af)
+
 
 - **Soft blocking** — Bypass-able overlays, not hard blocks
 - **Flexible schedules** — Work hours, evenings, always-on, or custom (supports overnight spans)
