@@ -12,7 +12,7 @@ The goal isn't to cage you. It's to create a moment of mindfulness before you mi
 ![Firefox](https://img.shields.io/badge/Firefox-Supported-orange?logo=firefox)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-**[Chrome Web Store](https://chrome.google.com/webstore)** · **[Firefox Add-ons](https://addons.mozilla.org)**
+**[Chrome Web Store](https://chrome.google.com/webstore)** · **[Firefox Add-ons](https://addons.mozilla.org)** - _Coming Soon (In Review)_
 
 ## Features
 
@@ -42,7 +42,7 @@ Sordino runs entirely on your machine:
 
 ### Chrome
 
-**[Chrome Web Store](https://chrome.google.com/webstore)**
+**[Chrome Web Store](https://chrome.google.com/webstore)** _Coming Soon (In Review)_
 
 1. Clone this repository
 2. Run `npm install && npm run build`
@@ -52,7 +52,7 @@ Sordino runs entirely on your machine:
 
 ### Firefox
 
-**[Firefox Add-ons](https://addons.mozilla.org)**
+**[Firefox Add-ons](https://addons.mozilla.org)** _Coming Soon (In Review)_
 
 1. Clone this repository
 2. Run `npm install && npm run build`
