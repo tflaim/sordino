@@ -12,7 +12,7 @@ The goal isn't to cage you. It's to create a moment of mindfulness before you mi
 ![Firefox](https://img.shields.io/badge/Firefox-Supported-orange?logo=firefox)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-**[Chrome Web Store](https://chrome.google.com/webstore)** · **[Firefox Add-ons](https://addons.mozilla.org)** - _Coming Soon (In Review)_
+**[Chrome Web Store](https://chrome.google.com/webstore)** _(In Review)_ · **[Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/sordino/)**
 
 ## Features
 
@@ -53,7 +53,7 @@ Sordino runs entirely on your machine:
 
 ### Firefox
 
-**[Firefox Add-ons](https://addons.mozilla.org)** _Coming Soon (In Review)_
+**[Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/sordino/)**
 
 **Manual install:**
 1. Download [sordino-firefox-v1.0.0.zip](https://github.com/tflaim/sordino/releases/download/v1.0.0/sordino-firefox-v1.0.0.zip)
@@ -61,7 +61,7 @@ Sordino runs entirely on your machine:
 3. Open `about:debugging#/runtime/this-firefox`
 4. Click **Load Temporary Add-on** → select `manifest.json` from the unzipped folder
 
-> **Note**: Firefox temporary add-ons reset when the browser closes. Store version coming soon.
+> **Note**: Temporary add-ons reset when the browser closes. Use the [store version](https://addons.mozilla.org/en-US/firefox/addon/sordino/) for persistence.
 
 ### Safari
 
