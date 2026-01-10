@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Sordino",
+  "name": "Sordino - Soft Website Blocker for Focus",
   "version": "1.0.0",
   "description": "Soft-block distracting websites with psychological friction, not force.",
   "content_security_policy": {
