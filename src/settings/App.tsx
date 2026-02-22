@@ -243,7 +243,7 @@ function App() {
             {/* Bypass Settings Section */}
             <section className="mb-10">
               <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Bypass Settings</h2>
-              <BypassSettings settings={settings} />
+              <BypassSettings settings={settings} onUpdate={updateSettings} />
             </section>
           </>
         ) : (
@@ -254,7 +254,11 @@ function App() {
               <WeeklyStatsChart settings={settings} />
             </section>
 
-            {/* Most Blocked/Bypassed Sites */}
+            <section className="mb-10">
+              <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Bypass Budget</h2>
+              <BypassBudget settings={settings} />
+            </section>
+
             <section className="mb-10">
               <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Top Sites</h2>
               <TopSitesDisplay settings={settings} />
@@ -749,49 +753,116 @@ function AddSiteInput({ onAdd, existingSites }: { onAdd: (site: string) => void;
   )
 }
 
-function BypassSettings({ settings }: { settings: SordinoSettings }) {
+function NumberStepper({
+  value,
+  onChange,
+  min,
+  max,
+  suffix,
+}: {
+  value: number
+  onChange: (value: number) => void
+  min: number
+  max: number
+  suffix?: string
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <button
+        onClick={() => onChange(Math.max(min, value - 1))}
+        disabled={value <= min}
+        className="w-8 h-8 rounded-full bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium flex items-center justify-center transition-colors disabled:opacity-30"
+      >
+        −
+      </button>
+      <span className="text-sm font-medium w-12 text-center tabular-nums">
+        {value}{suffix}
+      </span>
+      <button
+        onClick={() => onChange(Math.min(max, value + 1))}
+        disabled={value >= max}
+        className="w-8 h-8 rounded-full bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium flex items-center justify-center transition-colors disabled:opacity-30"
+      >
+        +
+      </button>
+    </div>
+  )
+}
+
+function BypassSettings({ settings, onUpdate }: {
+  settings: SordinoSettings
+  onUpdate: (updater: (s: SordinoSettings) => SordinoSettings) => void
+}) {
+  const maxBypasses = settings.maxBypasses ?? MAX_QUICK_BYPASSES
+  const bypassDuration = settings.bypassDurationMinutes ?? 5
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-secondary/30 p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">Daily bypass limit</p>
+            <p className="text-sm text-muted-foreground">
+              Max bypasses per day before midnight reset
+            </p>
+          </div>
+          <NumberStepper
+            value={maxBypasses}
+            onChange={(v) => onUpdate((s) => ({ ...s, maxBypasses: v }))}
+            min={1}
+            max={10}
+          />
+        </div>
+      </div>
+      <div className="rounded-xl bg-secondary/30 p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">Bypass duration</p>
+            <p className="text-sm text-muted-foreground">
+              How long each bypass lasts
+            </p>
+          </div>
+          <NumberStepper
+            value={bypassDuration}
+            onChange={(v) => onUpdate((s) => ({ ...s, bypassDurationMinutes: v }))}
+            min={1}
+            max={30}
+            suffix=" min"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function BypassBudget({ settings }: { settings: SordinoSettings }) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [refreshResult, setRefreshResult] = useState<{ success: boolean; message: string } | null>(null)
   const [countdown, setCountdown] = useState('')
 
+  const maxBypasses = settings.maxBypasses ?? MAX_QUICK_BYPASSES
   const bypassesUsed = settings.bypassState.quickBypassesUsed
-  const bypassesRemaining = MAX_QUICK_BYPASSES - bypassesUsed
+  const bypassesRemaining = maxBypasses - bypassesUsed
 
-  // Check if emergency refresh was used today (daily reset at midnight local time)
   const canRefresh = () => {
     if (!settings.bypassState.lastEmergencyRefresh) return true
     const today = getLocalDateString()
     return settings.bypassState.lastEmergencyRefresh !== today
   }
 
-  // Format date for display
-  const formatLastUsedDate = (dateStr: string | null): string => {
-    if (!dateStr) return ''
-    const date = new Date(dateStr)
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  }
-
-  // Calculate countdown to midnight
   useEffect(() => {
     const updateCountdown = () => {
       const now = new Date()
       const midnight = new Date(now)
       midnight.setDate(midnight.getDate() + 1)
       midnight.setHours(0, 0, 0, 0)
-
       const diff = midnight.getTime() - now.getTime()
       const hours = Math.floor(diff / (1000 * 60 * 60))
       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-
-      if (hours > 0) {
-        setCountdown(`${hours}h ${minutes}m`)
-      } else {
-        setCountdown(`${minutes}m`)
-      }
+      setCountdown(hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`)
     }
-
     updateCountdown()
-    const interval = setInterval(updateCountdown, 60000) // Update every minute
+    const interval = setInterval(updateCountdown, 60000)
     return () => clearInterval(interval)
   }, [])
 
@@ -800,7 +871,6 @@ function BypassSettings({ settings }: { settings: SordinoSettings }) {
       setRefreshResult({ success: false, message: 'Emergency refresh already used today' })
       return
     }
-
     setIsRefreshing(true)
     try {
       const response = await chrome.runtime.sendMessage({ type: 'EMERGENCY_REFRESH_BYPASSES' })
@@ -809,48 +879,41 @@ function BypassSettings({ settings }: { settings: SordinoSettings }) {
       } else {
         setRefreshResult({ success: false, message: response.reason || 'Failed to refresh' })
       }
-    } catch (error) {
+    } catch {
       setRefreshResult({ success: false, message: 'Failed to refresh bypasses' })
     }
     setIsRefreshing(false)
-
-    // Clear message after 3 seconds
     setTimeout(() => setRefreshResult(null), 3000)
   }
 
   const refreshAvailable = canRefresh()
-  const lastUsedDate = settings.bypassState.lastEmergencyRefresh
 
   return (
     <div className="space-y-4">
-      {/* Current Status */}
       <div className="rounded-xl border border-border bg-secondary/30 p-4">
         <div className="flex items-center justify-between mb-3">
           <div>
             <p className="font-medium">Daily Bypasses</p>
             <p className="text-sm text-muted-foreground">
-              {bypassesRemaining} of {MAX_QUICK_BYPASSES} remaining today
+              {bypassesRemaining} of {maxBypasses} remaining today
             </p>
           </div>
           <div className="text-2xl font-serif font-semibold text-primary">
-            {bypassesRemaining}/{MAX_QUICK_BYPASSES}
+            {bypassesRemaining}/{maxBypasses}
           </div>
         </div>
         <div className="h-2 bg-secondary rounded-full overflow-hidden">
           <div
             className="h-full bg-primary transition-all duration-300"
-            style={{ width: `${(bypassesRemaining / MAX_QUICK_BYPASSES) * 100}%` }}
+            style={{ width: `${(bypassesRemaining / maxBypasses) * 100}%` }}
           />
         </div>
         <p className="text-xs text-muted-foreground mt-2">Resets at midnight ({countdown} remaining)</p>
       </div>
 
-      {/* Emergency Refresh */}
       <div className={cn(
         "rounded-xl border p-4",
-        refreshAvailable
-          ? "border-border bg-secondary/30"
-          : "border-border/50 bg-secondary/10 opacity-60"
+        refreshAvailable ? "border-border bg-secondary/30" : "border-border/50 bg-secondary/10 opacity-60"
       )}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
@@ -860,11 +923,6 @@ function BypassSettings({ settings }: { settings: SordinoSettings }) {
                 ? 'Reset your daily bypasses once per day when you really need them.'
                 : `Already used today. Available again at midnight (${countdown}).`}
             </p>
-            {lastUsedDate && (
-              <p className="text-xs text-muted-foreground/70 mt-1">
-                Last used: {formatLastUsedDate(lastUsedDate)}
-              </p>
-            )}
           </div>
           <button
             onClick={handleEmergencyRefresh}
@@ -881,10 +939,7 @@ function BypassSettings({ settings }: { settings: SordinoSettings }) {
           </button>
         </div>
         {refreshResult && (
-          <p className={cn(
-            "text-sm mt-3",
-            refreshResult.success ? "text-green-500" : "text-destructive"
-          )}>
+          <p className={cn("text-sm mt-3", refreshResult.success ? "text-green-500" : "text-destructive")}>
             {refreshResult.message}
           </p>
         )}
