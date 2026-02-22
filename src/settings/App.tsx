@@ -1012,7 +1012,12 @@ function WeeklyStatsChart({ settings }: { settings: SordinoSettings }) {
           <p className="text-xs text-muted-foreground">Bypasses</p>
         </div>
         <div className="rounded-xl border border-border bg-secondary/30 p-4 text-center">
-          <p className="text-2xl font-serif font-semibold text-muted-foreground">{emergencyRefreshes}</p>
+          <p className={cn(
+            "text-2xl font-serif font-semibold",
+            emergencyRefreshes > 0 ? "text-muted-foreground" : "text-muted-foreground/50"
+          )}>
+            {emergencyRefreshes}
+          </p>
           <p className="text-xs text-muted-foreground">Refreshes</p>
         </div>
       </div>
@@ -1037,49 +1042,47 @@ function WeeklyStatsChart({ settings }: { settings: SordinoSettings }) {
           </div>
         </div>
         <div className="flex items-end gap-3">
-          {weekData.map((day) => {
-            const maxBarHeight = 72 // pixels
-            const blocksHeight = day.isFuture ? 2 : Math.max((day.blocks / maxValue) * maxBarHeight, day.blocks > 0 ? 6 : 2)
-            const bypassesHeight = day.isFuture ? 2 : Math.max((day.bypasses / maxValue) * maxBarHeight, day.bypasses > 0 ? 6 : 2)
+          {weekData.filter(day => !day.isFuture).map((day) => {
+            const maxBarHeight = 72
+            const blocksHeight = day.blocks > 0 ? Math.max((day.blocks / maxValue) * maxBarHeight, 6) : 0
+            const bypassesHeight = day.bypasses > 0 ? Math.max((day.bypasses / maxValue) * maxBarHeight, 6) : 0
 
             return (
               <div key={day.day} className="flex-1 flex flex-col items-center gap-1">
                 <div className="w-full flex items-end justify-center gap-1" style={{ height: maxBarHeight + 16 }}>
-                  {/* Blocks bar */}
                   <div className="flex-1 flex flex-col items-center justify-end h-full">
                     {day.blocks > 0 && (
                       <span className="text-[10px] text-muted-foreground mb-0.5">{day.blocks}</span>
                     )}
-                    <div
-                      className={cn(
-                        "w-full rounded-t transition-all duration-300",
-                        day.isToday ? "bg-primary" : "bg-primary/60",
-                        day.isFuture && "bg-secondary"
-                      )}
-                      style={{ height: `${blocksHeight}px` }}
-                    />
+                    {blocksHeight > 0 && (
+                      <div
+                        className={cn(
+                          "w-full rounded-t-sm transition-all duration-300",
+                          day.isToday ? "bg-primary" : "bg-primary/60"
+                        )}
+                        style={{ height: `${blocksHeight}px` }}
+                      />
+                    )}
                   </div>
-                  {/* Bypasses bar */}
                   <div className="flex-1 flex flex-col items-center justify-end h-full">
                     {day.bypasses > 0 && (
                       <span className="text-[10px] text-muted-foreground mb-0.5">{day.bypasses}</span>
                     )}
-                    <div
-                      className={cn(
-                        "w-full rounded-t transition-all duration-300",
-                        day.isToday ? "bg-orange-500" : "bg-orange-500/60",
-                        day.isFuture && "bg-secondary"
-                      )}
-                      style={{ height: `${bypassesHeight}px` }}
-                    />
+                    {bypassesHeight > 0 && (
+                      <div
+                        className={cn(
+                          "w-full rounded-t-sm transition-all duration-300",
+                          day.isToday ? "bg-orange-500" : "bg-orange-500/60"
+                        )}
+                        style={{ height: `${bypassesHeight}px` }}
+                      />
+                    )}
                   </div>
                 </div>
-                <span className={cn(
-                  "text-xs",
-                  day.isToday ? "font-medium text-primary" : "text-muted-foreground"
-                )}>
-                  {day.day}
-                </span>
+                <div className="flex flex-col items-center">
+                  <span className="text-xs text-muted-foreground">{day.day}</span>
+                  {day.isToday && <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1" />}
+                </div>
               </div>
             )
           })}
@@ -1150,15 +1153,25 @@ function TopSitesDisplay({ settings }: { settings: SordinoSettings }) {
           <p className="text-xs text-muted-foreground/70 italic">No blocks yet</p>
         ) : (
           <div className="space-y-2">
-            {topBlocked.map(([site, stats], index) => (
-              <div key={site} className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xs text-muted-foreground/60 w-4">{index + 1}.</span>
-                  <span className="text-sm truncate">{site}</span>
+            {topBlocked.map(([site, stats], index) => {
+              const maxBlocks = topBlocked[0]?.[1].blocks ?? 1
+              const pct = (stats.blocks / maxBlocks) * 100
+              return (
+                <div key={site} className="relative">
+                  <div
+                    className="absolute inset-y-0 left-0 bg-primary/10 rounded"
+                    style={{ width: `${pct}%` }}
+                  />
+                  <div className="relative flex items-center justify-between py-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs text-muted-foreground/60 w-4">{index + 1}.</span>
+                      <span className="text-sm truncate">{site}</span>
+                    </div>
+                    <span className="text-sm font-medium text-primary ml-2">{stats.blocks}</span>
+                  </div>
                 </div>
-                <span className="text-sm font-medium text-primary ml-2">{stats.blocks}</span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -1170,15 +1183,25 @@ function TopSitesDisplay({ settings }: { settings: SordinoSettings }) {
           <p className="text-xs text-muted-foreground/70 italic">No bypasses yet</p>
         ) : (
           <div className="space-y-2">
-            {topBypassed.map(([site, stats], index) => (
-              <div key={site} className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xs text-muted-foreground/60 w-4">{index + 1}.</span>
-                  <span className="text-sm truncate">{site}</span>
+            {topBypassed.map(([site, stats], index) => {
+              const maxBypasses = topBypassed[0]?.[1].bypasses ?? 1
+              const pct = (stats.bypasses / maxBypasses) * 100
+              return (
+                <div key={site} className="relative">
+                  <div
+                    className="absolute inset-y-0 left-0 bg-orange-500/10 rounded"
+                    style={{ width: `${pct}%` }}
+                  />
+                  <div className="relative flex items-center justify-between py-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs text-muted-foreground/60 w-4">{index + 1}.</span>
+                      <span className="text-sm truncate">{site}</span>
+                    </div>
+                    <span className="text-sm font-medium text-orange-500 ml-2">{stats.bypasses}</span>
+                  </div>
                 </div>
-                <span className="text-sm font-medium text-orange-500 ml-2">{stats.bypasses}</span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
