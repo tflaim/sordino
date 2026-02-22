@@ -313,12 +313,14 @@ async function handleMessage(message: MessageType): Promise<unknown> {
         timeRemaining: activeSchedule
           ? `until ${formatEndTime(activeSchedule)}`
           : undefined,
-        bypassesRemaining: MAX_QUICK_BYPASSES - settings.bypassState.quickBypassesUsed,
+        bypassesRemaining: (settings.maxBypasses ?? MAX_QUICK_BYPASSES) - settings.bypassState.quickBypassesUsed,
+        bypassDuration: settings.bypassDurationMinutes ?? 5,
       }
     }
 
     case 'USE_BYPASS': {
-      const remaining = MAX_QUICK_BYPASSES - settings.bypassState.quickBypassesUsed
+      const maxBypasses = settings.maxBypasses ?? MAX_QUICK_BYPASSES
+      const remaining = maxBypasses - settings.bypassState.quickBypassesUsed
       if (remaining <= 0) {
         return { success: false, remaining: 0 }
       }
@@ -345,7 +347,7 @@ async function handleMessage(message: MessageType): Promise<unknown> {
             quickBypassesUsed: s.bypassState.quickBypassesUsed + 1,
             activeBypass: {
               site,
-              expiresAt: Date.now() + BYPASS_DURATION_MS,
+              expiresAt: Date.now() + (settings.bypassDurationMinutes ?? 5) * 60 * 1000,
             },
           },
           stats: {
@@ -422,7 +424,7 @@ async function handleMessage(message: MessageType): Promise<unknown> {
           emergencyRefreshesUsed: (s.weeklyStats.emergencyRefreshesUsed || 0) + 1,
         },
       }))
-      return { success: true, remaining: MAX_QUICK_BYPASSES }
+      return { success: true, remaining: settings.maxBypasses ?? MAX_QUICK_BYPASSES }
     }
 
     case 'CLEAR_BYPASS': {
