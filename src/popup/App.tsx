@@ -89,7 +89,8 @@ function App() {
     statusSubtext = `${activeSchedule.name} • until ${formatEndTime(activeSchedule)}`
   }
 
-  const bypassesRemaining = MAX_QUICK_BYPASSES - settings.bypassState.quickBypassesUsed
+  const maxBypasses = settings.maxBypasses ?? MAX_QUICK_BYPASSES
+  const bypassesRemaining = maxBypasses - settings.bypassState.quickBypassesUsed
 
   const handleToggle = async () => {
     const newState = status === 'active' ? 'off' : 'on'
@@ -141,11 +142,11 @@ function App() {
       {/* Status Card */}
       <div className="p-4">
         <div className={cn(
-          "relative rounded-xl p-5 border transition-all duration-300",
-          status === 'active' && "bg-primary/10 border-primary/30",
-          status === 'bypass' && "bg-orange-500/10 border-orange-500/30",
-          status === 'paused' && "bg-yellow-500/10 border-yellow-500/30",
-          status === 'inactive' && "bg-secondary/50 border-border"
+          "relative rounded-xl p-5 transition-all duration-300",
+          status === 'active' && "bg-primary/15",
+          status === 'bypass' && "bg-orange-500/15",
+          status === 'paused' && "bg-yellow-500/15",
+          status === 'inactive' && "bg-secondary/50"
         )}>
           {/* Glow effect for active/bypass */}
           {status === 'active' && (
@@ -180,7 +181,19 @@ function App() {
               </div>
             </div>
 
-            <p className="text-sm text-muted-foreground mb-4">{statusSubtext}</p>
+            <p className={cn("text-sm text-muted-foreground", status !== 'active' ? "mb-4" : "")}>{statusSubtext}</p>
+            {status === 'active' && (
+              <p className="text-xs text-muted-foreground/70 mb-4">
+                {(() => {
+                  const enabledSiteCount = settings.categories
+                    .filter(c => c.enabled)
+                    .reduce((sum, c) => sum + c.sites.length - (c.disabledSites?.length ?? 0), 0)
+                    + settings.customSites.length
+                  const enabledCategoryCount = settings.categories.filter(c => c.enabled).length
+                  return `${enabledSiteCount} sites across ${enabledCategoryCount} ${enabledCategoryCount === 1 ? 'category' : 'categories'}`
+                })()}
+              </p>
+            )}
 
             {/* Action buttons */}
             <div className="flex gap-2">
@@ -248,15 +261,18 @@ function App() {
         <div className="grid grid-cols-3 gap-3">
           <StatCard
             value={settings.stats.blocksTriggered}
-            label="blocked"
+            singular="distraction caught"
+            plural="distractions caught"
           />
           <StatCard
             value={settings.stats.bypassesUsed}
-            label="bypasses"
+            singular="bypass used"
+            plural="bypasses used"
           />
           <StatCard
-            value={`${bypassesRemaining}/${MAX_QUICK_BYPASSES}`}
-            label="bypasses left"
+            value={`${bypassesRemaining}/${maxBypasses}`}
+            singular="bypasses remaining"
+            plural="bypasses remaining"
             highlight={bypassesRemaining === 0}
             subtext={bypassesRemaining === 0 ? 'Resets at midnight' : undefined}
           />
@@ -271,11 +287,19 @@ function App() {
   )
 }
 
-function StatCard({ value, label, highlight, subtext }: { value: number | string; label: string; highlight?: boolean; subtext?: string }) {
+function StatCard({ value, singular, plural, highlight, subtext }: {
+  value: number | string
+  singular: string
+  plural: string
+  highlight?: boolean
+  subtext?: string
+}) {
+  const numValue = typeof value === 'number' ? value : parseInt(value)
+  const label = numValue === 1 ? singular : plural
   return (
     <div className={cn(
-      "rounded-xl p-3 text-center border",
-      highlight ? "bg-destructive/10 border-destructive/30" : "bg-secondary/30 border-border/50"
+      "rounded-2xl p-3 text-center",
+      highlight ? "bg-destructive/10" : "bg-secondary/50"
     )}>
       <p className={cn(
         "text-xl font-semibold font-serif",
@@ -328,14 +352,14 @@ function QuickAddSite() {
         <button
           onClick={handleAdd}
           disabled={!site.trim()}
-          className="p-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+          className="px-3 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
           title="Add site"
         >
           <Check className="w-4 h-4" />
         </button>
         <button
           onClick={() => { setIsOpen(false); setSite('') }}
-          className="p-2.5 rounded-xl border border-border hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
+          className="px-3 py-2.5 rounded-xl bg-secondary/50 hover:bg-secondary/70 text-muted-foreground hover:text-foreground transition-colors"
           title="Cancel"
         >
           <X className="w-4 h-4" />
@@ -347,7 +371,7 @@ function QuickAddSite() {
   return (
     <button
       onClick={() => setIsOpen(true)}
-      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border hover:bg-secondary/50 text-sm font-medium transition-colors"
+      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-secondary/40 hover:bg-secondary/60 text-sm font-medium transition-colors"
     >
       <Plus className="w-4 h-4" />
       Add site
