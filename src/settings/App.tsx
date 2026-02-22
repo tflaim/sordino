@@ -3,6 +3,7 @@ import { getSettings, updateSettings as updateSettingsQueued, subscribeToSetting
 import type { SordinoSettings, Schedule, Category, DayOfWeek } from '../shared/types'
 import { TEMPLATE_SCHEDULE_IDS, DEFAULT_SCHEDULES, getLocalDateString, MAX_QUICK_BYPASSES } from '../shared/types'
 import { cn } from '../shared/utils'
+import { shouldBlock } from '../shared/schedule'
 import { Plus, Trash2, X, Check, ChevronDown, RefreshCw, BarChart3, Settings, Activity, AlertCircle } from 'lucide-react'
 
 type Tab = 'settings' | 'usage'
@@ -47,11 +48,28 @@ function App() {
       {/* Texture overlay */}
       <div className="fixed inset-0 opacity-[0.02] pointer-events-none bg-[url('data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noise%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.9%22 numOctaves=%224%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noise)%22/%3E%3C/svg%3E')]" />
 
-      <div className="relative max-w-2xl mx-auto px-6 py-8">
+      <div className="relative max-w-3xl mx-auto px-6 py-8">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <img src="icons/logo.png" alt="Sordino" className="w-8 h-8" />
-          <h1 className="font-serif text-2xl font-medium tracking-wide text-primary">Sordino</h1>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <img src="icons/logo.png" alt="Sordino" className="w-8 h-8" />
+            <h1 className="font-serif text-2xl font-medium tracking-wide text-primary">Sordino</h1>
+          </div>
+          {settings && (() => {
+            const isPaused = settings.blockState.pausedUntil && Date.now() < settings.blockState.pausedUntil
+            const isActive = !isPaused && (
+              settings.blockState.manualOverride === 'on' ||
+              (settings.blockState.manualOverride === null && shouldBlock(settings).shouldBlock)
+            )
+            const statusLabel = isPaused ? 'Paused' : isActive ? 'Blocking' : 'Inactive'
+            const dotColor = isPaused ? 'bg-yellow-500' : isActive ? 'bg-green-500' : 'bg-muted-foreground/50'
+            return (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className={cn("w-2 h-2 rounded-full", dotColor)} />
+                <span>{statusLabel}</span>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Tab Navigation */}
@@ -248,6 +266,25 @@ function App() {
   )
 }
 
+function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      className={cn(
+        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200",
+        checked ? "bg-primary" : "bg-secondary"
+      )}
+    >
+      <span className={cn(
+        "inline-block h-5 w-5 rounded-full bg-foreground shadow-sm transition-transform duration-200",
+        checked ? "translate-x-[22px]" : "translate-x-[2px]"
+      )} />
+    </button>
+  )
+}
+
 function ScheduleCard({
   schedule,
   isTemplate = false,
@@ -373,17 +410,7 @@ function ScheduleCard({
     >
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-3">
-          <button
-            onClick={onToggle}
-            className={cn(
-              "mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors duration-150 ease-out",
-              schedule.enabled
-                ? "bg-primary border-primary text-primary-foreground"
-                : "border-muted-foreground"
-            )}
-          >
-            {schedule.enabled && <Check className="w-3 h-3" />}
-          </button>
+          <Toggle checked={schedule.enabled} onChange={onToggle} />
           <div>
             <p className="font-medium">{schedule.name}</p>
             <p className="text-sm text-muted-foreground">
@@ -603,17 +630,7 @@ function CategoryCard({
       {/* Header */}
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-3">
-          <button
-            onClick={onToggle}
-            className={cn(
-              "w-5 h-5 rounded border-2 flex items-center justify-center transition-colors duration-150 ease-out",
-              category.enabled
-                ? "bg-primary border-primary text-primary-foreground"
-                : "border-muted-foreground"
-            )}
-          >
-            {category.enabled && <Check className="w-3 h-3" />}
-          </button>
+          <Toggle checked={category.enabled} onChange={onToggle} />
           <div>
             <p className="font-medium">{category.name}</p>
             <p className="text-sm text-muted-foreground">
