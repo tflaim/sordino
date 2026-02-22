@@ -67,6 +67,8 @@ export interface SordinoSettings {
   schedules: Schedule[]
   categories: Category[]
   customSites: string[]
+  maxBypasses: number           // default 3, range 1-10
+  bypassDurationMinutes: number // default 5, range 1-30
   blockState: BlockState
   bypassState: BypassState
   stats: Stats
@@ -170,6 +172,8 @@ export const DEFAULT_SETTINGS: SordinoSettings = {
   schedules: DEFAULT_SCHEDULES,
   categories: DEFAULT_CATEGORIES,
   customSites: [],
+  maxBypasses: 3,
+  bypassDurationMinutes: 5,
   blockState: {
     isBlocking: false,
     manualOverride: null,
