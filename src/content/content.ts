@@ -6,6 +6,7 @@ interface BlockStatus {
   reason?: string
   timeRemaining?: string
   bypassesRemaining?: number
+  bypassDuration?: number  // minutes
 }
 
 let overlayElement: HTMLElement | null = null
@@ -233,7 +234,8 @@ function createOverlay(status: BlockStatus): HTMLElement {
   const bypassBtn = document.createElement('button')
   bypassBtn.className = 'sordino-bypass-btn'
   bypassBtn.id = 'sordino-bypass'
-  bypassBtn.textContent = 'Bypass for 5 min'
+  const bypassDuration = status.bypassDuration ?? 5
+  bypassBtn.textContent = `Bypass for ${bypassDuration} min`
   content.appendChild(bypassBtn)
 
   // Bypass count
@@ -243,6 +245,20 @@ function createOverlay(status: BlockStatus): HTMLElement {
   const remaining = status.bypassesRemaining ?? 0
   bypassCount.textContent = `${remaining} quick bypass${remaining === 1 ? '' : 'es'} left`
   content.appendChild(bypassCount)
+
+  // Go back link
+  const goBackLink = document.createElement('a')
+  goBackLink.className = 'sordino-go-back'
+  goBackLink.textContent = '\u2190 Go back'
+  goBackLink.addEventListener('click', (e) => {
+    e.preventDefault()
+    if (history.length > 1) {
+      history.back()
+    } else {
+      window.location.href = 'about:newtab'
+    }
+  })
+  content.appendChild(goBackLink)
 
   container.appendChild(content)
 
@@ -388,9 +404,8 @@ function injectStyles(): void {
       font-family: Georgia, 'Times New Roman', serif !important;
       font-size: 1.75rem !important;
       font-weight: 500 !important;
-      letter-spacing: 0.1em !important;
+      letter-spacing: 0.05em !important;
       color: #cda468 !important;
-      text-transform: uppercase !important;
     }
 
     .sordino-snarky-container {
@@ -532,6 +547,21 @@ function injectStyles(): void {
       font-size: 0.8125rem !important;
       color: #6b5d4d !important;
       margin: 0.75rem 0 0 0 !important;
+    }
+
+    .sordino-go-back {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+      font-size: 0.8125rem !important;
+      color: #6b5d4d !important;
+      margin: 1rem 0 0 0 !important;
+      cursor: pointer !important;
+      text-decoration: none !important;
+      transition: color 0.2s ease !important;
+    }
+
+    .sordino-go-back:hover {
+      color: #9a8b7a !important;
+      text-decoration: underline !important;
     }
   `
   document.head.appendChild(styles)
