@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef } from 'react'
 import { getSettings, updateSettings as updateSettingsQueued, subscribeToSettings } from '../shared/storage'
 import type { SordinoSettings, Schedule, Category, DayOfWeek } from '../shared/types'
-import { TEMPLATE_SCHEDULE_IDS, DEFAULT_SCHEDULES, getLocalDateString, MAX_QUICK_BYPASSES } from '../shared/types'
+import { TEMPLATE_SCHEDULE_IDS, DEFAULT_SCHEDULES, getLocalDateString, MAX_QUICK_BYPASSES, CONFIRM_RESET_MS } from '../shared/types'
 import { cn } from '../shared/utils'
-import { shouldBlock } from '../shared/schedule'
+import { shouldBlock, getActiveSchedule, formatEndTime } from '../shared/schedule'
 import { Plus, Trash2, X, Check, ChevronDown, RefreshCw, BarChart3, Settings, Activity, AlertCircle } from 'lucide-react'
 
 type Tab = 'settings' | 'usage'
@@ -38,7 +38,7 @@ function App() {
   if (!settings) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
+        <div className="motion-safe:animate-pulse text-muted-foreground">Loading...</div>
       </div>
     )
   }
@@ -49,27 +49,12 @@ function App() {
       <div className="fixed inset-0 opacity-[0.02] pointer-events-none bg-[url('data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noise%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.9%22 numOctaves=%224%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noise)%22/%3E%3C/svg%3E')]" />
 
       <div className="relative max-w-3xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <img src="icons/logo.png" alt="Sordino" className="w-8 h-8" />
-            <h1 className="font-serif text-2xl font-medium tracking-wide text-primary">Sordino</h1>
-          </div>
-          {settings && (() => {
-            const isPaused = settings.blockState.pausedUntil && Date.now() < settings.blockState.pausedUntil
-            const isActive = !isPaused && (
-              settings.blockState.manualOverride === 'on' ||
-              (settings.blockState.manualOverride === null && shouldBlock(settings).shouldBlock)
-            )
-            const statusLabel = isPaused ? 'Paused' : isActive ? 'Blocking' : 'Inactive'
-            const dotColor = isPaused ? 'bg-yellow-500' : isActive ? 'bg-green-500' : 'bg-muted-foreground/50'
-            return (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <div className={cn("w-2 h-2 rounded-full", dotColor)} />
-                <span>{statusLabel}</span>
-              </div>
-            )
-          })()}
+        {/* Header — status moved to RightNowCallout below the tab strip so
+            the Settings surface doesn't carry two indicators of the same
+            information at the same time. */}
+        <div className="flex items-center gap-3 mb-6">
+          <img src="icons/logo.png" alt="Sordino" className="w-8 h-8" />
+          <h1 className="font-serif text-2xl font-medium tracking-wide text-primary">Sordino</h1>
         </div>
 
         {/* Tab Navigation */}
@@ -102,6 +87,12 @@ function App() {
 
         {activeTab === 'settings' ? (
           <>
+            {/* Right Now callout — orients the user before the body content
+                begins. Mirrors the header status pill in plain-sentence form
+                so the ADHD-primary persona doesn't have to look back up
+                during a scroll-and-scan task. */}
+            <RightNowCallout settings={settings} />
+
             {/* Schedules Section */}
             <section className="mb-10">
               <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Schedules</h2>
@@ -149,14 +140,7 @@ function App() {
               />
             </section>
 
-            {/* Musical divider - quiet/mute themed */}
-            <div className="flex items-center justify-center gap-4 text-primary/40 text-lg mb-10 select-none">
-              <span className="italic">pp</span>
-              <span>♪ ♫ ♪</span>
-              <span>𝄐</span>
-              <span>♫ ♪ ♫</span>
-              <span className="italic">pp</span>
-            </div>
+            <MusicalDivider />
 
             {/* Blocked Sites Section */}
             <section className="mb-10">
@@ -196,7 +180,7 @@ function App() {
                 <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-3">Custom Sites</h3>
                 <div className="space-y-2 mb-3">
                   {settings.customSites.length === 0 ? (
-                    <p className="text-sm text-muted-foreground italic">No custom sites added</p>
+                    <p className="text-sm text-muted-foreground">No custom sites added.</p>
                   ) : (
                     settings.customSites.map((site) => (
                       <div
@@ -231,15 +215,6 @@ function App() {
               </div>
             </section>
 
-            {/* Musical divider - quiet/mute themed */}
-            <div className="flex items-center justify-center gap-4 text-primary/40 text-lg mb-10 select-none">
-              <span className="italic">pp</span>
-              <span>♪ ♫ ♪</span>
-              <span>𝄐</span>
-              <span>♫ ♪ ♫</span>
-              <span className="italic">pp</span>
-            </div>
-
             {/* Bypass Settings Section */}
             <section className="mb-10">
               <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Bypass Settings</h2>
@@ -265,7 +240,157 @@ function App() {
             </section>
           </>
         )}
+
+        <Footer />
       </div>
+    </div>
+  )
+}
+
+const SORDINO_REPO_URL = 'https://github.com/tflaim/sordino'
+
+function Footer() {
+  // Read the version from the extension manifest at runtime so future bumps
+  // stay in sync without source edits. Safe inside a Chrome MV3 extension.
+  const version = chrome?.runtime?.getManifest?.()?.version ?? ''
+  const [showHelp, setShowHelp] = useState(false)
+  return (
+    <footer className="mt-16 pt-6 border-t border-border/40 space-y-3 text-xs text-muted-foreground/70">
+      {showHelp && (
+        <div className="rounded-lg bg-secondary/30 border border-border/40 p-4 text-sm text-foreground space-y-2">
+          <p>
+            Sordino blocks distracting sites softly. The overlay always offers a bypass; the bypass is the product.
+          </p>
+          <p>
+            You get a fixed number of quick bypasses per day, reset at midnight. The count is set in Bypass Settings.
+          </p>
+          <p>
+            Blocking runs on whichever schedules you turn on. Multiple schedules can overlap; if any one is active, blocking is active.
+          </p>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span>{version ? `Sordino v${version}` : 'Sordino'}</span>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowHelp((v) => !v)}
+            className="rounded hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            aria-expanded={showHelp}
+          >
+            {showHelp ? 'Hide overview' : 'How Sordino works'}
+          </button>
+          <span className="text-muted-foreground/30">·</span>
+          <a
+            href={`${SORDINO_REPO_URL}/blob/main/PRIVACY.md`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          >
+            Privacy
+          </a>
+          <span className="text-muted-foreground/30">·</span>
+          <a
+            href={SORDINO_REPO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          >
+            Source code
+          </a>
+        </div>
+      </div>
+      <p className="text-muted-foreground/50">Stored on this device. Nothing leaves your browser.</p>
+    </footer>
+  )
+}
+
+// Hand-shaped SVG musical-mute divider. Replaces glyph-unicode dividers
+// (pp ♪♫♪ 𝄐 ♫♪♫ pp) whose fermata + flagged-note glyphs do not render
+// reliably across browser font stacks. Inline SVG ensures consistent
+// rendering on every platform. currentColor inherits the surrounding text
+// color and opacity from the wrapper. The pp text spans were removed because
+// italic Cormorant under 24px violates the 24px Cormorant Rule (§3) and
+// stacking two dividers ×two italic spans each blew the Italic Budget Rule.
+function MusicalDivider() {
+  return (
+    <div className="flex items-center justify-center text-primary/40 mb-10 select-none" aria-hidden>
+      <svg
+        width="148"
+        height="22"
+        viewBox="0 0 148 22"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {/* Three eighth notes: stem + filled notehead */}
+        <g>
+          {/* Note 1 */}
+          <line x1="6" y1="3" x2="6" y2="17" />
+          <ellipse cx="4" cy="17" rx="3" ry="2.2" fill="currentColor" strokeWidth="0" />
+          {/* Note 2 */}
+          <line x1="20" y1="3" x2="20" y2="17" />
+          <ellipse cx="18" cy="17" rx="3" ry="2.2" fill="currentColor" strokeWidth="0" />
+          {/* Note 3 */}
+          <line x1="34" y1="3" x2="34" y2="17" />
+          <ellipse cx="32" cy="17" rx="3" ry="2.2" fill="currentColor" strokeWidth="0" />
+          {/* Beam connecting the three eighths */}
+          <line x1="6" y1="3" x2="34" y2="3" strokeWidth="2" />
+        </g>
+        {/* Fermata: arc with a dot below */}
+        <g transform="translate(74 11)">
+          <path d="M -10 2 A 10 10 0 0 1 10 2" />
+          <circle cx="0" cy="2" r="1.2" fill="currentColor" strokeWidth="0" />
+        </g>
+        {/* Three more eighth notes mirroring the first group */}
+        <g>
+          <line x1="114" y1="3" x2="114" y2="17" />
+          <ellipse cx="112" cy="17" rx="3" ry="2.2" fill="currentColor" strokeWidth="0" />
+          <line x1="128" y1="3" x2="128" y2="17" />
+          <ellipse cx="126" cy="17" rx="3" ry="2.2" fill="currentColor" strokeWidth="0" />
+          <line x1="142" y1="3" x2="142" y2="17" />
+          <ellipse cx="140" cy="17" rx="3" ry="2.2" fill="currentColor" strokeWidth="0" />
+          <line x1="114" y1="3" x2="142" y2="3" strokeWidth="2" />
+        </g>
+      </svg>
+    </div>
+  )
+}
+
+// Right-now status callout — sits above the first body section on the
+// Settings tab and owns state for that surface (the duplicate header pill
+// was removed to avoid two indicators showing the same information). Reads
+// as one sentence per state, no parental prefix, no end-of-line period
+// (matches the no-period pill convention elsewhere).
+function RightNowCallout({ settings }: { settings: SordinoSettings }) {
+  const isPaused = !!settings.blockState.pausedUntil && Date.now() < settings.blockState.pausedUntil
+  const isManualOn = settings.blockState.manualOverride === 'on'
+  const isActive = !isPaused && (
+    isManualOn ||
+    (settings.blockState.manualOverride === null && shouldBlock(settings).shouldBlock)
+  )
+  const activeSchedule = isActive && !isManualOn ? getActiveSchedule(settings.schedules) : null
+
+  let body: string
+  if (isPaused) {
+    const pauseEnd = new Date(settings.blockState.pausedUntil!)
+    body = `Paused until ${pauseEnd.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+  } else if (isActive && activeSchedule) {
+    body = `Blocking until ${formatEndTime(activeSchedule)} via ${activeSchedule.name}`
+  } else if (isActive && isManualOn) {
+    body = 'Blocking manually'
+  } else {
+    body = 'Not blocking. Turn on a schedule below to start'
+  }
+
+  const dotColor = isPaused ? 'bg-warning' : isActive ? 'bg-success' : 'bg-muted-foreground/50'
+
+  return (
+    <div className="mb-8 flex items-center gap-2.5 px-4 py-2.5 rounded-lg bg-secondary/30 border border-border/40 text-sm">
+      <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", dotColor)} aria-hidden />
+      <p className="text-foreground">{body}</p>
     </div>
   )
 }
@@ -303,7 +428,17 @@ function ScheduleCard({
   onDelete: () => void
 }) {
   const [isEditing, setIsEditing] = useState(false)
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
   const [editedSchedule, setEditedSchedule] = useState(schedule)
+
+  // Auto-cancel the delete-confirm after 8 seconds of inaction so the UI
+  // doesn't strand a user mid-action. 8s leaves slack for the ADHD-primary
+  // persona to glance away and come back without losing the state.
+  useEffect(() => {
+    if (!isConfirmingDelete) return
+    const t = setTimeout(() => setIsConfirmingDelete(false), CONFIRM_RESET_MS)
+    return () => clearTimeout(t)
+  }, [isConfirmingDelete])
 
   const formatDays = (days: DayOfWeek[]) => {
     if (days.length === 7) return 'Every day'
@@ -321,7 +456,7 @@ function ScheduleCard({
 
   if (isEditing) {
     return (
-      <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 animate-in fade-in duration-200">
+      <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
         <input
           type="text"
           value={editedSchedule.name}
@@ -423,19 +558,40 @@ function ScheduleCard({
           </div>
         </div>
         {!isTemplate && (
-          <div className="flex gap-1">
-            <button
-              onClick={() => setIsEditing(true)}
-              className="px-2 py-1 rounded text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150 ease-out"
-            >
-              Edit
-            </button>
-            <button
-              onClick={onDelete}
-              className="p-1 rounded text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-colors duration-150 ease-out"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+          <div className="flex items-center gap-1">
+            {isConfirmingDelete ? (
+              <>
+                <button
+                  onClick={() => { setIsConfirmingDelete(false); onDelete() }}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-foreground hover:bg-secondary transition-colors duration-150 ease-out"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Remove
+                </button>
+                <button
+                  onClick={() => setIsConfirmingDelete(false)}
+                  className="px-2 py-1 rounded text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150 ease-out"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="px-2 py-1 rounded text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150 ease-out"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => setIsConfirmingDelete(true)}
+                  className="p-1 rounded text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150 ease-out"
+                  aria-label="Remove schedule"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </>
+            )}
           </div>
         )}
         {isTemplate && (
@@ -562,9 +718,9 @@ function AddScheduleButton({ onAdd }: { onAdd: (schedule: Schedule) => void }) {
 
         {/* Duplicate Warning */}
         {duplicateWarning && (
-          <div className="flex items-start gap-2 mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-            <AlertCircle className="w-4 h-4 text-yellow-500 mt-0.5 shrink-0" />
-            <p className="text-sm text-yellow-600 dark:text-yellow-400">{duplicateWarning}</p>
+          <div className="flex items-start gap-2 mb-4 p-3 rounded-lg bg-warning/10 border border-warning/20">
+            <AlertCircle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
+            <p className="text-sm text-warning">{duplicateWarning}</p>
           </div>
         )}
 
@@ -610,7 +766,11 @@ function CategoryCard({
   onToggle: () => void
   onUpdate: (category: Category) => void
 }) {
-  const [isExpanded, setIsExpanded] = useState(false)
+  // Default-expanded when the category is enabled so the per-site checkboxes
+  // are visible without an extra discovery click (the previous default-
+  // collapsed pattern hid the per-site disable path; the ADHD-primary
+  // persona would not find it).
+  const [isExpanded, setIsExpanded] = useState(category.enabled)
   const contentRef = useRef<HTMLDivElement>(null)
 
   const disabledSites = category.disabledSites ?? []
@@ -831,6 +991,20 @@ function BypassSettings({ settings, onUpdate }: {
           />
         </div>
       </div>
+      <div className="rounded-xl bg-secondary/30 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="font-medium">Scaffolding mode</p>
+            <p className="text-sm text-muted-foreground">
+              Adds a second-click confirm on the bypass button.
+            </p>
+          </div>
+          <Toggle
+            checked={settings.scaffoldingMode ?? false}
+            onChange={() => onUpdate((s) => ({ ...s, scaffoldingMode: !(s.scaffoldingMode ?? false) }))}
+          />
+        </div>
+      </div>
     </div>
   )
 }
@@ -920,8 +1094,8 @@ function BypassBudget({ settings }: { settings: SordinoSettings }) {
             <p className="font-medium">Emergency Refresh</p>
             <p className="text-sm text-muted-foreground">
               {refreshAvailable
-                ? 'Reset your daily bypasses once per day when you really need them.'
-                : `Already used today. Available again at midnight (${countdown}).`}
+                ? 'Resets your daily bypass count. Once per day, available at midnight.'
+                : `Used today. Available again at midnight (${countdown}).`}
             </p>
           </div>
           <button
@@ -934,12 +1108,12 @@ function BypassBudget({ settings }: { settings: SordinoSettings }) {
                 : "bg-secondary text-muted-foreground cursor-not-allowed"
             )}
           >
-            <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
+            <RefreshCw className={cn("w-4 h-4", isRefreshing && "motion-safe:animate-spin")} />
             Refresh
           </button>
         </div>
         {refreshResult && (
-          <p className={cn("text-sm mt-3", refreshResult.success ? "text-green-500" : "text-destructive")}>
+          <p className={cn("text-sm mt-3", refreshResult.success ? "text-success" : "text-destructive")}>
             {refreshResult.message}
           </p>
         )}
@@ -1008,14 +1182,11 @@ function WeeklyStatsChart({ settings }: { settings: SordinoSettings }) {
           <p className="text-xs text-muted-foreground">Blocks</p>
         </div>
         <div className="rounded-xl border border-border bg-secondary/30 p-4 text-center">
-          <p className="text-2xl font-serif font-semibold text-orange-500">{totalBypasses}</p>
+          <p className="text-2xl font-serif font-semibold text-info">{totalBypasses}</p>
           <p className="text-xs text-muted-foreground">Bypasses</p>
         </div>
         <div className="rounded-xl border border-border bg-secondary/30 p-4 text-center">
-          <p className={cn(
-            "text-2xl font-serif font-semibold",
-            emergencyRefreshes > 0 ? "text-muted-foreground" : "text-muted-foreground/50"
-          )}>
+          <p className="text-2xl font-serif font-semibold text-muted-foreground">
             {emergencyRefreshes}
           </p>
           <p className="text-xs text-muted-foreground">Refreshes</p>
@@ -1036,7 +1207,7 @@ function WeeklyStatsChart({ settings }: { settings: SordinoSettings }) {
               <span className="text-muted-foreground">Blocks</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-sm bg-orange-500" />
+              <div className="w-2.5 h-2.5 rounded-sm bg-info" />
               <span className="text-muted-foreground">Bypasses</span>
             </div>
           </div>
@@ -1049,30 +1220,30 @@ function WeeklyStatsChart({ settings }: { settings: SordinoSettings }) {
 
             return (
               <div key={day.day} className="flex-1 flex flex-col items-center gap-1">
-                <div className="w-full flex items-end justify-center gap-1" style={{ height: maxBarHeight + 16 }}>
-                  <div className="flex-1 flex flex-col items-center justify-end h-full">
+                <div className="flex items-end justify-center gap-1.5" style={{ height: maxBarHeight + 16 }}>
+                  <div className="flex flex-col items-center justify-end h-full w-5">
                     {day.blocks > 0 && (
-                      <span className="text-[10px] text-muted-foreground mb-0.5">{day.blocks}</span>
+                      <span className="text-[10px] text-muted-foreground mb-0.5 tabular-nums">{day.blocks}</span>
                     )}
                     {blocksHeight > 0 && (
                       <div
                         className={cn(
-                          "w-full rounded-t-sm transition-all duration-300",
+                          "w-full rounded-t-sm transition-colors duration-300",
                           day.isToday ? "bg-primary" : "bg-primary/60"
                         )}
                         style={{ height: `${blocksHeight}px` }}
                       />
                     )}
                   </div>
-                  <div className="flex-1 flex flex-col items-center justify-end h-full">
+                  <div className="flex flex-col items-center justify-end h-full w-5">
                     {day.bypasses > 0 && (
-                      <span className="text-[10px] text-muted-foreground mb-0.5">{day.bypasses}</span>
+                      <span className="text-[10px] text-muted-foreground mb-0.5 tabular-nums">{day.bypasses}</span>
                     )}
                     {bypassesHeight > 0 && (
                       <div
                         className={cn(
-                          "w-full rounded-t-sm transition-all duration-300",
-                          day.isToday ? "bg-orange-500" : "bg-orange-500/60"
+                          "w-full rounded-t-sm transition-colors duration-300",
+                          day.isToday ? "bg-info" : "bg-info/60"
                         )}
                         style={{ height: `${bypassesHeight}px` }}
                       />
@@ -1138,8 +1309,7 @@ function TopSitesDisplay({ settings }: { settings: SordinoSettings }) {
   if (topBlocked.length === 0 && topBypassed.length === 0) {
     return (
       <div className="rounded-xl border border-border bg-secondary/30 p-6 text-center">
-        <p className="text-sm text-muted-foreground">No site activity recorded yet this week.</p>
-        <p className="text-xs text-muted-foreground/70 mt-1">Stats will appear here as you browse.</p>
+        <p className="text-sm text-muted-foreground">No site activity recorded this week.</p>
       </div>
     )
   }
@@ -1150,7 +1320,7 @@ function TopSitesDisplay({ settings }: { settings: SordinoSettings }) {
       <div className="rounded-xl border border-border bg-secondary/30 p-4">
         <p className="text-sm font-medium text-muted-foreground mb-3">Most Blocked</p>
         {topBlocked.length === 0 ? (
-          <p className="text-xs text-muted-foreground/70 italic">No blocks yet</p>
+          <p className="text-xs text-muted-foreground">No blocks recorded this week.</p>
         ) : (
           <div className="space-y-2">
             {topBlocked.map(([site, stats], index) => {
@@ -1180,7 +1350,7 @@ function TopSitesDisplay({ settings }: { settings: SordinoSettings }) {
       <div className="rounded-xl border border-border bg-secondary/30 p-4">
         <p className="text-sm font-medium text-muted-foreground mb-3">Most Bypassed</p>
         {topBypassed.length === 0 ? (
-          <p className="text-xs text-muted-foreground/70 italic">No bypasses yet</p>
+          <p className="text-xs text-muted-foreground">No bypasses used this week.</p>
         ) : (
           <div className="space-y-2">
             {topBypassed.map(([site, stats], index) => {
@@ -1189,7 +1359,7 @@ function TopSitesDisplay({ settings }: { settings: SordinoSettings }) {
               return (
                 <div key={site} className="relative">
                   <div
-                    className="absolute inset-y-0 left-0 bg-orange-500/10 rounded"
+                    className="absolute inset-y-0 left-0 bg-info/10 rounded"
                     style={{ width: `${pct}%` }}
                   />
                   <div className="relative flex items-center justify-between py-1">
@@ -1197,7 +1367,7 @@ function TopSitesDisplay({ settings }: { settings: SordinoSettings }) {
                       <span className="text-xs text-muted-foreground/60 w-4">{index + 1}.</span>
                       <span className="text-sm truncate">{site}</span>
                     </div>
-                    <span className="text-sm font-medium text-orange-500 ml-2">{stats.bypasses}</span>
+                    <span className="text-sm font-medium text-info ml-2">{stats.bypasses}</span>
                   </div>
                 </div>
               )

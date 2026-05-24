@@ -51,7 +51,7 @@ function App() {
   if (!settings) {
     return (
       <div className="w-[340px] h-[420px] bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
+        <div className="motion-safe:animate-pulse text-muted-foreground">Loading...</div>
       </div>
     )
   }
@@ -120,6 +120,10 @@ function App() {
     chrome.tabs.create({ url: chrome.runtime.getURL('settings.html') })
   }
 
+  const dismissOnboarding = async () => {
+    await updateSettings((s) => ({ ...s, onboardingDismissed: true }))
+  }
+
   return (
     <div className="w-[340px] bg-background text-foreground overflow-hidden">
       {/* Subtle texture overlay */}
@@ -139,41 +143,66 @@ function App() {
         </button>
       </div>
 
+      {/* First-run onboarding card */}
+      {!settings.onboardingDismissed && (
+        <div className="relative px-4 pt-4">
+          <div className="relative rounded-xl border border-border bg-secondary/40 p-4 pr-9">
+            <button
+              onClick={dismissOnboarding}
+              className="absolute top-2 right-2 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+              aria-label="Dismiss tip"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+            <p className="text-sm leading-relaxed text-foreground">
+              Sordino softens distracting sites on your schedule. {maxBypasses} quick bypasses are built in each day, reset at midnight. Schedules live in{' '}
+              <button
+                onClick={async () => { await dismissOnboarding(); openSettings() }}
+                className="underline underline-offset-2 decoration-primary/40 hover:decoration-primary/70 hover:text-primary transition-colors"
+              >
+                Settings
+              </button>
+              .
+            </p>
+            <div className="mt-3 flex justify-end">
+              <button
+                onClick={dismissOnboarding}
+                className="px-3 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Status Card */}
       <div className="p-4">
         <div className={cn(
-          "relative rounded-xl p-5 transition-all duration-300",
+          "relative rounded-xl p-5 transition-colors duration-200",
           status === 'active' && "bg-primary/15",
-          status === 'bypass' && "bg-orange-500/15",
-          status === 'paused' && "bg-yellow-500/15",
+          status === 'bypass' && "bg-info/15",
+          status === 'paused' && "bg-warning/15",
           status === 'inactive' && "bg-secondary/50"
         )}>
-          {/* Glow effect for active/bypass */}
-          {status === 'active' && (
-            <div className="absolute inset-0 rounded-xl bg-primary/5 blur-xl" />
-          )}
-          {status === 'bypass' && (
-            <div className="absolute inset-0 rounded-xl bg-orange-500/5 blur-xl" />
-          )}
-
           <div className="relative">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 {status === 'bypass' ? (
-                  <Timer className="w-4 h-4 text-orange-500" />
+                  <Timer className="w-4 h-4 text-info" />
                 ) : (
                   <div className={cn(
                     "w-2.5 h-2.5 rounded-full",
-                    status === 'active' && "bg-green-500 animate-[pulse_1.5s_ease-in-out_infinite] shadow-[0_0_8px_rgba(34,197,94,0.6)]",
-                    status === 'paused' && "bg-yellow-500",
+                    status === 'active' && "bg-success motion-safe:animate-[pulse_1.5s_ease-in-out_infinite]",
+                    status === 'paused' && "bg-warning",
                     status === 'inactive' && "bg-muted-foreground/50"
                   )} />
                 )}
                 <span className={cn(
-                  "text-sm font-medium uppercase tracking-wider transition-all duration-300",
-                  status === 'active' && "text-primary [text-shadow:0_0_10px_rgba(205,164,104,0.5),0_0_20px_rgba(205,164,104,0.3)]",
-                  status === 'bypass' && "text-orange-500 [text-shadow:0_0_10px_rgba(249,115,22,0.5),0_0_20px_rgba(249,115,22,0.3)]",
-                  status === 'paused' && "text-yellow-500 [text-shadow:0_0_10px_rgba(234,179,8,0.5),0_0_20px_rgba(234,179,8,0.3)]",
+                  "text-sm font-medium uppercase tracking-wider transition-colors duration-200",
+                  status === 'active' && "text-primary",
+                  status === 'bypass' && "text-info",
+                  status === 'paused' && "text-warning",
                   status === 'inactive' && "text-muted-foreground"
                 )}>
                   {statusText}
@@ -209,7 +238,7 @@ function App() {
 
                   {/* Pause dropdown */}
                   {showPauseMenu && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-xl shadow-xl z-10 overflow-hidden">
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-xl z-10 overflow-hidden">
                       <button onClick={() => handlePause(15 * 60 * 1000)} className="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary/50 transition-colors flex items-center gap-2">
                         <Clock className="w-3.5 h-3.5 text-muted-foreground" />
                         15 minutes
@@ -234,7 +263,7 @@ function App() {
               {status === 'bypass' && (
                 <button
                   onClick={handleClearBypass}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/30 text-orange-500 text-sm font-medium transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-info/20 hover:bg-info/30 border border-info/30 text-info text-sm font-medium transition-colors"
                 >
                   <Play className="w-4 h-4" />
                   Resume Blocking

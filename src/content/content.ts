@@ -1,5 +1,6 @@
 import { FOCUS_QUOTES } from '../shared/quotes'
 import { getRandomSnarkyTitle } from '../shared/snarky-titles'
+import { CONFIRM_RESET_MS } from '../shared/types'
 
 interface BlockStatus {
   isBlocked: boolean
@@ -7,6 +8,7 @@ interface BlockStatus {
   timeRemaining?: string
   bypassesRemaining?: number
   bypassDuration?: number  // minutes
+  scaffoldingMode?: boolean  // when true, bypass button requires a second-click confirm
 }
 
 let overlayElement: HTMLElement | null = null
@@ -93,6 +95,17 @@ function rotateQuote(): void {
 
   if (!container || !textEl || !authorEl) return
 
+  // Reduced-motion: swap text synchronously, skip fade orchestration so
+  // users never see a blank-then-snap flash.
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (reducedMotion) {
+    currentQuoteIndex = getNextQuoteIndex()
+    const newQuote = FOCUS_QUOTES[currentQuoteIndex]
+    textEl.textContent = `"${ensureTextOnly(newQuote.text)}"`
+    authorEl.textContent = `— ${ensureTextOnly(newQuote.author)}`
+    return
+  }
+
   // Start fade out
   container.classList.add('sordino-quote-fading')
   container.classList.remove('sordino-quote-entering')
@@ -131,11 +144,6 @@ function createOverlay(status: BlockStatus): HTMLElement {
   // Container
   const container = document.createElement('div')
   container.className = 'sordino-container'
-
-  // Glow effect
-  const glow = document.createElement('div')
-  glow.className = 'sordino-glow'
-  container.appendChild(glow)
 
   // Content wrapper
   const content = document.createElement('div')
@@ -230,27 +238,12 @@ function createOverlay(status: BlockStatus): HTMLElement {
   card.appendChild(reason)
   content.appendChild(card)
 
-  // Bypass button
-  const bypassBtn = document.createElement('button')
-  bypassBtn.className = 'sordino-bypass-btn'
-  bypassBtn.id = 'sordino-bypass'
-  const bypassDuration = status.bypassDuration ?? 5
-  bypassBtn.textContent = `Bypass for ${bypassDuration} min`
-  content.appendChild(bypassBtn)
-
-  // Bypass count
-  const bypassCount = document.createElement('p')
-  bypassCount.className = 'sordino-bypass-count'
-  bypassCount.id = 'sordino-bypass-count'
-  const remaining = status.bypassesRemaining ?? 0
-  bypassCount.textContent = `${remaining} quick bypass${remaining === 1 ? '' : 'es'} left`
-  content.appendChild(bypassCount)
-
-  // Go back link
-  const goBackLink = document.createElement('a')
-  goBackLink.className = 'sordino-go-back'
-  goBackLink.textContent = '\u2190 Go back'
-  goBackLink.addEventListener('click', (e) => {
+  // Go back button (promoted: primary win-path action)
+  const goBackBtn = document.createElement('button')
+  goBackBtn.className = 'sordino-go-back'
+  goBackBtn.type = 'button'
+  goBackBtn.textContent = '\u2190 Go back'
+  goBackBtn.addEventListener('click', (e) => {
     e.preventDefault()
     if (history.length > 1) {
       history.back()
@@ -258,7 +251,23 @@ function createOverlay(status: BlockStatus): HTMLElement {
       window.location.href = 'about:newtab'
     }
   })
-  content.appendChild(goBackLink)
+  content.appendChild(goBackBtn)
+
+  // Bypass button (demoted: smaller ghost weight)
+  const bypassBtn = document.createElement('button')
+  bypassBtn.className = 'sordino-bypass-btn'
+  bypassBtn.id = 'sordino-bypass'
+  const bypassDuration = status.bypassDuration ?? 5
+  bypassBtn.textContent = `Bypass for ${bypassDuration} min`
+  content.appendChild(bypassBtn)
+
+  // Bypass count (caption directly under bypass)
+  const bypassCount = document.createElement('p')
+  bypassCount.className = 'sordino-bypass-count'
+  bypassCount.id = 'sordino-bypass-count'
+  const remaining = status.bypassesRemaining ?? 0
+  bypassCount.textContent = `${remaining} quick bypass${remaining === 1 ? '' : 'es'} left today`
+  content.appendChild(bypassCount)
 
   container.appendChild(content)
 
@@ -272,22 +281,61 @@ function createOverlay(status: BlockStatus): HTMLElement {
   // Handle bypass state
   if (remaining === 0) {
     bypassBtn.disabled = true
-    bypassBtn.textContent = 'No bypasses left'
+    bypassBtn.textContent = '0 bypasses left'
     bypassCount.textContent = 'Resets at midnight'
   }
 
-  // Bypass click handler
+  // Bypass click handler. When scaffoldingMode is on, the first click arms a
+  // confirm state and the second click commits. Resolves the
+  // Principle-4-vs-ADHD-primary tension PRODUCT.md flagged as live: users who
+  // want friction can opt in without imposing it on everyone.
+  const scaffoldingMode = status.scaffoldingMode ?? false
+  let armedForConfirm = false
+  let confirmTimeoutId: number | null = null
+  const originalBypassText = bypassBtn.textContent ?? ''
+
+  const resetArmed = () => {
+    armedForConfirm = false
+    if (confirmTimeoutId !== null) {
+      clearTimeout(confirmTimeoutId)
+      confirmTimeoutId = null
+    }
+    bypassBtn.textContent = originalBypassText
+  }
+
   bypassBtn.addEventListener('click', async () => {
+    // First click in scaffolding mode: arm the confirm state, don't bypass yet.
+    // Timer matches the delete-confirm timeout via the shared CONFIRM_RESET_MS
+    // constant so the ADHD-primary persona has the same slack across both
+    // confirm flows in the product.
+    if (scaffoldingMode && !armedForConfirm) {
+      armedForConfirm = true
+      bypassBtn.textContent = 'Tap again to bypass'
+      confirmTimeoutId = window.setTimeout(resetArmed, CONFIRM_RESET_MS)
+      return
+    }
+
+    const originalText = bypassBtn.textContent ?? ''
+    if (confirmTimeoutId !== null) {
+      clearTimeout(confirmTimeoutId)
+      confirmTimeoutId = null
+    }
     bypassBtn.disabled = true
     bypassBtn.textContent = 'Using bypass...'
 
-    const result = await useBypass()
+    try {
+      const result = await useBypass()
 
-    if (result.success) {
-      removeOverlay()
-    } else {
-      bypassBtn.textContent = 'No bypasses left'
-      bypassCount.textContent = 'Resets at midnight'
+      if (result.success) {
+        removeOverlay()
+      } else {
+        bypassBtn.textContent = '0 bypasses left'
+        bypassCount.textContent = 'Resets at midnight'
+      }
+    } catch {
+      // Defensive: if useBypass throws unexpectedly, restore the button so the user isn't stranded.
+      bypassBtn.disabled = false
+      bypassBtn.textContent = originalText
     }
   })
 
@@ -321,16 +369,6 @@ function injectStyles(): void {
       to { opacity: 1; }
     }
 
-    @keyframes sordino-float {
-      0%, 100% { transform: translateY(0) scale(1); }
-      50% { transform: translateY(-8px) scale(1.02); }
-    }
-
-    @keyframes sordino-glow-pulse {
-      0%, 100% { opacity: 0.4; transform: translate(-50%, -50%) scale(1); }
-      50% { opacity: 0.6; transform: translate(-50%, -50%) scale(1.1); }
-    }
-
     @keyframes sordino-quote-fade-out {
       from { opacity: 1; transform: translateY(0); }
       to { opacity: 0; transform: translateY(-10px); }
@@ -350,18 +388,6 @@ function injectStyles(): void {
       justify-content: center !important;
       background: linear-gradient(145deg, #1a1612 0%, #2d2620 50%, #1f1a16 100%) !important;
       overflow: hidden !important;
-    }
-
-    .sordino-glow {
-      position: absolute !important;
-      top: 40% !important;
-      left: 50% !important;
-      width: 600px !important;
-      height: 600px !important;
-      background: radial-gradient(circle, rgba(205, 164, 104, 0.15) 0%, rgba(205, 164, 104, 0.05) 40%, transparent 70%) !important;
-      transform: translate(-50%, -50%) !important;
-      animation: sordino-glow-pulse 6s ease-in-out infinite !important;
-      pointer-events: none !important;
     }
 
     .sordino-texture {
@@ -384,7 +410,6 @@ function injectStyles(): void {
       text-align: center !important;
       padding: 2rem !important;
       max-width: 480px !important;
-      animation: sordino-float 8s ease-in-out infinite !important;
     }
 
     .sordino-logo {
@@ -418,7 +443,6 @@ function injectStyles(): void {
       font-family: Georgia, 'Times New Roman', serif !important;
       font-size: 2.5rem !important;
       font-weight: 500 !important;
-      font-style: italic !important;
       color: #e8dcc8 !important;
       letter-spacing: 0.02em !important;
       margin: 0 !important;
@@ -482,7 +506,7 @@ function injectStyles(): void {
 
     .sordino-card {
       background: rgba(205, 164, 104, 0.08) !important;
-      border: 1px solid rgba(205, 164, 104, 0.2) !important;
+      border: 1px solid rgba(205, 164, 104, 0.10) !important;
       border-radius: 12px !important;
       padding: 1.25rem 2rem !important;
       margin-bottom: 2rem !important;
@@ -512,56 +536,79 @@ function injectStyles(): void {
       font-size: 0.875rem !important;
     }
 
+    .sordino-go-back {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+      font-size: 1rem !important;
+      font-weight: 500 !important;
+      color: #e8dcc8 !important;
+      background: #463e39 !important;
+      border: 1px solid rgba(205, 164, 104, 0.18) !important;
+      border-radius: 12px !important;
+      padding: 0.8125rem 1.75rem !important;
+      cursor: pointer !important;
+      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease !important;
+      text-decoration: none !important;
+      margin: 0 0 0.5rem 0 !important;
+    }
+
+    .sordino-go-back:hover {
+      background: #524740 !important;
+      border-color: rgba(205, 164, 104, 0.35) !important;
+    }
+
+    .sordino-go-back:active {
+      background: #5c5247 !important;
+    }
+
     .sordino-bypass-btn {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-      font-size: 0.9375rem !important;
+      font-size: 0.875rem !important;
       font-weight: 500 !important;
-      color: #1a1612 !important;
-      background: linear-gradient(135deg, #cda468 0%, #b8935d 100%) !important;
-      border: none !important;
+      color: #e8dcc8 !important;
+      background: transparent !important;
+      border: 1px solid rgba(205, 164, 104, 0.22) !important;
       border-radius: 8px !important;
-      padding: 0.875rem 2rem !important;
+      padding: 0.5rem 1.125rem !important;
       cursor: pointer !important;
-      transition: all 0.2s ease !important;
-      box-shadow: 0 4px 12px rgba(205, 164, 104, 0.3) !important;
+      transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease !important;
+      text-decoration: none !important;
+      margin: 0.5rem 0 0 0 !important;
     }
 
     .sordino-bypass-btn:hover:not(:disabled) {
-      transform: translateY(-2px) !important;
-      box-shadow: 0 6px 20px rgba(205, 164, 104, 0.4) !important;
+      border-color: rgba(205, 164, 104, 0.45) !important;
+      background: rgba(205, 164, 104, 0.06) !important;
     }
 
     .sordino-bypass-btn:active:not(:disabled) {
-      transform: translateY(0) !important;
+      background: rgba(205, 164, 104, 0.12) !important;
+      border-color: rgba(205, 164, 104, 0.6) !important;
     }
 
     .sordino-bypass-btn:disabled {
-      background: rgba(205, 164, 104, 0.3) !important;
-      color: #9a8b7a !important;
+      color: #8a7a66 !important;
+      border-color: rgba(205, 164, 104, 0.10) !important;
+      background: rgba(205, 164, 104, 0.02) !important;
       cursor: not-allowed !important;
-      box-shadow: none !important;
     }
 
     .sordino-bypass-count {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-      font-size: 0.8125rem !important;
-      color: #6b5d4d !important;
-      margin: 0.75rem 0 0 0 !important;
+      font-size: 0.75rem !important;
+      color: #8a7a66 !important;
+      margin: 0.25rem 0 0 0 !important;
     }
 
-    .sordino-go-back {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-      font-size: 0.8125rem !important;
-      color: #6b5d4d !important;
-      margin: 1rem 0 0 0 !important;
-      cursor: pointer !important;
-      text-decoration: none !important;
-      transition: color 0.2s ease !important;
-    }
-
-    .sordino-go-back:hover {
-      color: #9a8b7a !important;
-      text-decoration: underline !important;
+    @media (prefers-reduced-motion: reduce) {
+      #sordino-overlay,
+      .sordino-quote,
+      .sordino-quote.sordino-quote-fading,
+      .sordino-quote.sordino-quote-entering {
+        animation: none !important;
+        transition: none !important;
+      }
+      /* Color/background tweens on interactive elements are vestibular-safe
+         and explicitly permitted by WCAG; only disable motion-bearing transitions. */
     }
   `
   document.head.appendChild(styles)
@@ -583,11 +630,12 @@ function showOverlay(status: BlockStatus): void {
   // Prevent scrolling
   document.body.style.overflow = 'hidden'
 
-  // Start quote rotation (every 5 seconds)
+  // Start quote rotation
   if (quoteRotationInterval) {
     clearInterval(quoteRotationInterval)
   }
-  quoteRotationInterval = window.setInterval(rotateQuote, 5000)
+  // 11s cadence — long enough to read, short enough that short-stay users see at least one rotation
+  quoteRotationInterval = window.setInterval(rotateQuote, 11000)
 }
 
 function removeOverlay(): void {
@@ -602,6 +650,11 @@ function removeOverlay(): void {
     clearInterval(quoteRotationInterval)
     quoteRotationInterval = null
   }
+
+  // Clear any lingering countdown toast (a persistent urgent toast that fired
+  // shortly before the bypass expired would otherwise stay in DOM, masked by
+  // a returning overlay, displaying a stale "5 seconds" warning).
+  document.getElementById('sordino-toast')?.remove()
 }
 
 // Toast notification for countdown (bypass or pause)
@@ -614,16 +667,20 @@ function showCountdownToast(message: string, urgent: boolean = false, theme: Toa
 
   if (!document.body) return
 
-  // Color schemes
+  // Color schemes — warm-walnut-tinted to match the system palette.
+  // Urgent variants shift to a perceptibly warmer/deeper amber so the
+  // 5-second state reads with time-running urgency without crossing into
+  // hard-blocker red. The Δ between normal and urgent is ≥20 sRGB units on
+  // every channel so the escalation is visible at a glance.
   const colors = {
     bypass: {
-      normal: 'rgba(249, 115, 22, 0.95)', // orange
-      urgent: 'rgba(239, 68, 68, 0.95)',  // red
+      normal: 'rgba(56, 46, 38, 0.94)',   // walnut shadow
+      urgent: 'rgba(118, 70, 40, 0.96)',  // warm amber — urgent but still in-palette
       icon: '⏱'
     },
     pause: {
-      normal: 'rgba(234, 179, 8, 0.95)',  // yellow
-      urgent: 'rgba(245, 158, 11, 0.95)', // amber
+      normal: 'rgba(56, 46, 38, 0.94)',   // walnut shadow
+      urgent: 'rgba(118, 70, 40, 0.96)',  // warm amber — urgent but still in-palette
       icon: '▶'
     }
   }
@@ -637,14 +694,14 @@ function showCountdownToast(message: string, urgent: boolean = false, theme: Toa
     bottom: 24px !important;
     right: 24px !important;
     background: ${urgent ? colorScheme.urgent : colorScheme.normal} !important;
-    color: ${theme === 'pause' ? '#1a1612' : 'white'} !important;
+    color: ${urgent ? '#f3e5cf' : '#e8dcc8'} !important;
+    border: 1px solid rgba(205, 164, 104, ${urgent ? '0.35' : '0.20'}) !important;
     padding: 12px 20px !important;
     border-radius: 8px !important;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
     font-size: 14px !important;
     font-weight: 500 !important;
     z-index: 2147483646 !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
     display: flex !important;
     align-items: center !important;
     gap: 8px !important;
@@ -671,17 +728,35 @@ function showCountdownToast(message: string, urgent: boolean = false, theme: Toa
         from { opacity: 1; transform: translateY(0) scale(1); }
         to { opacity: 0; transform: translateY(-10px) scale(0.95); }
       }
+      @media (prefers-reduced-motion: reduce) {
+        #sordino-toast {
+          animation: none !important;
+        }
+      }
     `
     document.head?.appendChild(style)
   }
 
   document.body.appendChild(toast)
 
-  // Auto-remove after 2.5 seconds with graceful fade
+  // Non-urgent toasts auto-remove at 2.5s. Urgent toasts (the 5-second final
+  // warning) linger longer — 15s — so a user who glances away during the
+  // warning still finds the signal when they look back, but the toast won't
+  // outlive its truthfulness (a 5-second warning from a minute ago would
+  // be a lie). 15s ≈ 3× the original urgent window.
+  const dismissAfter = urgent ? 15000 : 2500
   setTimeout(() => {
-    toast.style.animation = 'sordino-toast-out 0.5s ease-in-out forwards !important'
-    setTimeout(() => toast.remove(), 500)
-  }, 2500)
+    // Bail if the toast was already replaced or removed
+    if (!toast.isConnected) return
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reducedMotion) {
+      toast.remove()
+    } else {
+      // setProperty is required for !important — inline `style.animation = '... !important'` is silently dropped by CSSOM
+      toast.style.setProperty('animation', 'sordino-toast-out 0.5s ease-in-out forwards', 'important')
+      setTimeout(() => toast.remove(), 500)
+    }
+  }, dismissAfter)
 }
 
 // Check for active bypass or pause and show countdown notifications

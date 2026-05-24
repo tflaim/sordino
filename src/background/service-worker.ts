@@ -315,6 +315,7 @@ async function handleMessage(message: MessageType): Promise<unknown> {
           : undefined,
         bypassesRemaining: (settings.maxBypasses ?? MAX_QUICK_BYPASSES) - settings.bypassState.quickBypassesUsed,
         bypassDuration: settings.bypassDurationMinutes ?? 5,
+        scaffoldingMode: settings.scaffoldingMode ?? false,
       }
     }
 

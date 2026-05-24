@@ -3,6 +3,7 @@ export type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 // Centralized constants
 export const MAX_QUICK_BYPASSES = 3
 export const BYPASS_DURATION_MS = 5 * 60 * 1000 // 5 minutes
+export const CONFIRM_RESET_MS = 8000 // shared timeout for both delete-confirm and bypass-confirm armed states; 8s leaves slack for ADHD-primary attention drifts
 
 export interface Schedule {
   id: string
@@ -73,6 +74,8 @@ export interface SordinoSettings {
   bypassState: BypassState
   stats: Stats
   weeklyStats: WeeklyStats
+  onboardingDismissed: boolean  // true once the user dismisses the first-run popup card
+  scaffoldingMode: boolean      // when true, bypass requires a second-click confirm (opt-in friction for users who want it)
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [
@@ -198,6 +201,8 @@ export const DEFAULT_SETTINGS: SordinoSettings = {
     siteStats: {},
     emergencyRefreshesUsed: 0,
   },
+  onboardingDismissed: false,
+  scaffoldingMode: false,
 }
 
 // Template schedule IDs that cannot be edited or deleted

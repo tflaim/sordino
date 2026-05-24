@@ -5,6 +5,18 @@ const STORAGE_KEY = 'sordino_settings'
 // Simple mutex to prevent race conditions in read-modify-write operations
 let updateQueue: Promise<SordinoSettings> = Promise.resolve(DEFAULT_SETTINGS)
 
+// Heuristic: a stored object lacking `onboardingDismissed` but with real usage
+// (any custom sites, any logged blocks, any persisted weekly data) is a returning
+// user upgrading across the onboarding-card release. Default them to dismissed so
+// they don't get re-greeted with a first-run tip.
+function inferOnboardingDismissed(stored: Partial<SordinoSettings>): boolean {
+  if (typeof stored.onboardingDismissed === 'boolean') return stored.onboardingDismissed
+  const hasCustomSites = (stored.customSites?.length ?? 0) > 0
+  const hasBlocks = (stored.stats?.blocksTriggered ?? 0) > 0
+  const hasWeeklyHistory = (stored.weeklyStats?.days?.length ?? 0) > 0
+  return hasCustomSites || hasBlocks || hasWeeklyHistory
+}
+
 // Deep merge stored settings with defaults to handle schema migrations
 function mergeWithDefaults(stored: Partial<SordinoSettings>): SordinoSettings {
   return {
@@ -33,6 +45,7 @@ function mergeWithDefaults(stored: Partial<SordinoSettings>): SordinoSettings {
     schedules: stored.schedules ?? DEFAULT_SETTINGS.schedules,
     categories: stored.categories ?? DEFAULT_SETTINGS.categories,
     customSites: stored.customSites ?? DEFAULT_SETTINGS.customSites,
+    onboardingDismissed: inferOnboardingDismissed(stored),
   }
 }
 
