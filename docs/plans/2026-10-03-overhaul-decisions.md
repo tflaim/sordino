@@ -59,6 +59,25 @@ Source for `/to-spec`. Terms follow `GLOSSARY.md`; hard-to-reverse choices are i
 32. **Overlay layout leans C** (headline sentence + bottom action bar), per the Roots review finding that "blocked at the wrong time" is the top complaint; motion study built on C.
 33. **Architecture first pick:** #1 Single-writer Sordino store, with #2 Muting decision behind it (`/improve-codebase-architecture`, 2026-10-03).
 
+## Sordino store (architecture candidate #1, grilling)
+
+34. **Single writer** (S1): only background writes; popup, settings and content send domain commands.
+35. **Readers read storage directly** (S2) and subscribe to changes; reads never write; derived facts (day rollover, expiry) are computed from snapshot + now.
+36. **Three keys** (S3): `config` (sites, schedules, bypass options, own line, Stillness), `state` (Mute now, Pause, per-site bypasses, budget used today), `usage` (12 weeks of daily counts); each carries the schema version.
+37. **Domain commands only** (S4), each returning an outcome; no generic patch/update.
+38. **Commands return effects** (S5) (badge, alarms, notify tabs) applied by thin wiring in the background entrypoint.
+39. **Migration** (S6): unversioned data is v1; one migrate chain used for storage and import; malformed imports rejected without touching state. Export = config by default, Usage opt-in.
+40. **Sender rules** (S7): extension pages may send any command; content scripts only Record mute, Turn back, Take bypass, and only for the muted site matching their own tab URL.
+41. **Tests** (S8): Vitest at the store interface with in-memory storage, direct-call transport and a fixed clock; Playwright smoke covers real wiring.
+42. **Interface designed twice** (S9) before the spec.
+
+## UI picks (prototype round 1)
+
+43. **Popup: B "Mode switch"** (Schedule / Mute now / Pause tabs with durations and end times).
+44. **First run: C "One sentence"** (editable underlined parts) **plus B's small overlay preview** beneath it.
+45. **Usage: B "Calendar strip"** (12x7 grid, day readout) **with its table view** as the accessible alternative.
+46. **Overlay: C "Sentence + action bar"**; motion gesture still to be chosen from the motion prototype round.
+
 ## Still open (answered by later skills, not grilling)
 
 - Visual direction for each surface → `/prototype` (UI branch), both themes.
