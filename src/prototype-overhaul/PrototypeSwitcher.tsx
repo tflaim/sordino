@@ -21,6 +21,8 @@ interface Props {
   states: SwitcherOption[]
   state: string
   onState: (s: string) => void
+  /** The motion surface keeps its bottom action bar clear, so the bar moves to the top. */
+  placement?: 'top' | 'bottom'
 }
 
 const THEMES = ['system', 'light', 'dark']
@@ -65,7 +67,7 @@ export function PrototypeSwitcher(p: Props) {
       role="region"
       aria-label="Prototype switcher"
       data-proto-switcher
-      className="fixed bottom-4 left-1/2 z-[2147483647] flex w-max max-w-[calc(100vw-16px)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-2xl bg-slate-900/95 px-3 py-2 font-mono text-[12px] text-slate-100 shadow-[0_8px_30px_rgba(2,6,23,0.45)] ring-1 ring-slate-700"
+      className={`fixed ${p.placement === 'top' ? 'top-3' : 'bottom-4'} left-1/2 z-[2147483647] flex w-max max-w-[calc(100vw-16px)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-2xl bg-slate-900/95 px-3 py-2 font-mono text-[12px] text-slate-100 shadow-[0_8px_30px_rgba(2,6,23,0.45)] ring-1 ring-slate-700`}
     >
       <span className="rounded bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sky-300">
         proto

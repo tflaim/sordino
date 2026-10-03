@@ -1,5 +1,7 @@
 // PROTOTYPE — a fake, busy, light forum feed so the overlay is judged on top of a
 // real-looking page rather than in a vacuum. Generic styling; no real branding.
+import type { ReactNode } from 'react'
+
 const posts = [
   { sub: 'r/AskHistorians', t: 'Why did medieval monasteries keep such detailed weather records?', n: '4.1k', c: 312, img: false },
   { sub: 'r/pics', t: 'Found this old trumpet mute at a flea market, any idea how old it is?', n: '18.7k', c: 902, img: true },
@@ -9,7 +11,8 @@ const posts = [
   { sub: 'r/todayilearned', t: 'TIL a fermata tells the performer to hold a note for as long as they like', n: '9.8k', c: 611, img: false },
 ]
 
-export function HostFeed() {
+/** `lead` is an optional first post (the motion study puts a playing video there). */
+export function HostFeed({ lead }: { lead?: ReactNode } = {}) {
   return (
     <div className="min-h-screen bg-[#dae0e6] font-sans text-[#1a1a1b]" aria-hidden="true">
       <div className="flex items-center gap-2 border-b border-[#c8ccd0] bg-[#f3f3f3] px-3 py-1.5 text-[13px] text-[#444]">
@@ -32,6 +35,7 @@ export function HostFeed() {
             <span className="px-3 py-1 text-[#878a8c]">Top</span>
             <span className="px-3 py-1 text-[#878a8c]">Rising</span>
           </div>
+          {lead}
           {posts.map((p, i) => (
             <article key={i} className="flex overflow-hidden rounded border border-[#ccc] bg-white">
               <div className="flex w-10 flex-col items-center bg-[#f8f9fa] py-2 text-[12px] font-bold">
