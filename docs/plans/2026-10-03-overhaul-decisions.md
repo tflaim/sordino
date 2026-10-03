@@ -78,6 +78,13 @@ Source for `/to-spec`. Terms follow `GLOSSARY.md`; hard-to-reverse choices are i
 45. **Usage: B "Calendar strip"** (12x7 grid, day readout) **with its table view** as the accessible alternative.
 46. **Overlay: C "Sentence + action bar"**; motion gesture still to be chosen from the motion prototype round.
 
+## Store interface (design it twice, ADR-0004)
+
+47. **Hybrid store design:** D's shape (`openStore` / `dispatch` / `settle`; read-only vs read-write storage ports; effects as desired-state data; refusals are outcomes, `ok:false` means the command did not run) + B's open data model (`MutedSite { id, rule: { kind: 'host' } }`, `Schedule.appliesTo: 'all'`) + C's `waitLonger` take-bypass outcome. Per-surface hooks (C) are optional sugar, not part of the store interface. Overlay decisions come from the pure modules (#2–#5) plus the Overlay session (#6), not from a reader-side "view".
+48. **Store-timed Bypass wait:** Record mute (sent when the Overlay shows) stamps the offer time per site and navigation; Take bypass earlier than offer + wait is refused.
+49. **Fail closed** (S10) when a tab loses its extension context: the Overlay stays; Turn back works locally; Bypass reads "Reload to bypass".
+50. **ADR-0004** records the single-writer store with read-only readers.
+
 ## Still open (answered by later skills, not grilling)
 
 - Visual direction for each surface → `/prototype` (UI branch), both themes.
