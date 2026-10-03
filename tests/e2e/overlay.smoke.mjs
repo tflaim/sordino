@@ -8,25 +8,15 @@
 //       parse with "Cannot use import statement outside a module").
 //
 // Usage: node tests/e2e/overlay.smoke.mjs [distDir]   (default: .output/chrome-mv3)
-// Env:   CHROMIUM_PATH  optional Chromium binary (must be full Chromium, not
-//                       headless-shell, which cannot load extensions)
-//        HEADED=1       run headed
-import { chromium } from 'playwright'
+// Env:   see harness.mjs
 import { createServer } from 'node:http'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { builtExtension, collectErrors, launchExtension } from './harness.mjs'
 
-const DIST = resolve(process.argv[2] ?? '.output/chrome-mv3')
+const { dist: DIST } = builtExtension()
 const HOST = 'www.reddit.com' // in DEFAULT_CATEGORIES (social), so blocked when blocking is on
 const OVERLAY = '#sordino-overlay'
 const OVERLAY_TIMEOUT_MS = 5000
 const SETTLE_MS = 500
-
-if (!existsSync(join(DIST, 'manifest.json'))) {
-  console.error(`FAIL ${DIST}/manifest.json not found (run \`npm run build\` first)`)
-  process.exit(1)
-}
 
 const server = createServer((req, res) => {
   if (req.url === '/') {
@@ -39,25 +29,12 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r))
 const port = server.address().port
 
-const userDataDir = mkdtempSync(join(tmpdir(), 'sordino-smoke-'))
-const ctx = await chromium.launchPersistentContext(userDataDir, {
-  ...(process.env.CHROMIUM_PATH
-    ? { executablePath: process.env.CHROMIUM_PATH }
-    : { channel: 'chromium' }),
-  headless: !process.env.HEADED,
-  args: [
-    `--disable-extensions-except=${DIST}`,
-    `--load-extension=${DIST}`,
-    '--no-proxy-server',
-    `--host-resolver-rules=MAP ${HOST} 127.0.0.1:${port}`,
-  ],
-})
+const { ctx, sw, close } = await launchExtension(DIST, [
+  `--host-resolver-rules=MAP ${HOST} 127.0.0.1:${port}`,
+])
 
 let exitCode
 try {
-  const sw =
-    ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker', { timeout: 10000 }))
-
   // Force blocking on. Wait for the extension APIs to be bound in the worker
   // (they appear shortly after it starts) and for onInstalled to have written
   // settings: it does a read-modify-write and would clobber an earlier patch.
@@ -81,16 +58,7 @@ try {
   const errors = []
   let onError
   const firstError = new Promise((r) => (onError = r))
-  page.on('pageerror', (e) => {
-    errors.push(`[pageerror] ${e.name}: ${e.message}`)
-    onError()
-  })
-  page.on('console', (m) => {
-    if (m.type() === 'error') {
-      errors.push(`[console.error] ${m.text()}`)
-      onError()
-    }
-  })
+  collectErrors(page, errors, 'page', onError)
 
   await page.goto(`http://${HOST}/`, { waitUntil: 'domcontentloaded' })
 
@@ -114,8 +82,7 @@ try {
   )
   exitCode = pass ? 0 : 1
 } finally {
-  await ctx.close()
+  await close()
   server.close()
-  rmSync(userDataDir, { recursive: true, force: true })
 }
 process.exit(exitCode)

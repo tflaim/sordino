@@ -11,33 +11,14 @@
 //   (d) no page errors / console errors.
 //
 // Usage: node tests/e2e/pages.smoke.mjs [distDir]   (default: .output/chrome-mv3)
-// Env:   CHROMIUM_PATH  optional Chromium binary (must be full Chromium, not
-//                       headless-shell, which cannot load extensions)
-//        HEADED=1       run headed
-import { chromium } from 'playwright'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+// Env:   see harness.mjs
+import { builtExtension, collectErrors, launchExtension } from './harness.mjs'
 
-const DIST = resolve(process.argv[2] ?? '.output/chrome-mv3')
+const { dist: DIST, manifest } = builtExtension()
 const FONTS = ['16px "DM Sans"', '16px "Cormorant Garamond"']
 const SETTLE_MS = 500
 
-const manifestPath = join(DIST, 'manifest.json')
-if (!existsSync(manifestPath)) {
-  console.error(`FAIL ${manifestPath} not found (run \`npm run build\` first)`)
-  process.exit(1)
-}
-const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-
-const userDataDir = mkdtempSync(join(tmpdir(), 'sordino-pages-'))
-const ctx = await chromium.launchPersistentContext(userDataDir, {
-  ...(process.env.CHROMIUM_PATH
-    ? { executablePath: process.env.CHROMIUM_PATH }
-    : { channel: 'chromium' }),
-  headless: !process.env.HEADED,
-  args: [`--disable-extensions-except=${DIST}`, `--load-extension=${DIST}`, '--no-proxy-server'],
-})
+const { ctx, sw, close } = await launchExtension(DIST)
 
 const failures = []
 const offDevice = []
@@ -47,12 +28,6 @@ const isOnDevice = (url) => /^(chrome-extension|data|blob):/.test(url)
 ctx.on('request', (req) => {
   if (!isOnDevice(req.url())) offDevice.push(req.url())
 })
-const watch = (page, label) => {
-  page.on('pageerror', (e) => errors.push(`[${label} pageerror] ${e.name}: ${e.message}`))
-  page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(`[${label} console.error] ${m.text()}`)
-  })
-}
 const fontsRendered = (page) =>
   page.evaluate(async (fonts) => {
     await Promise.all(fonts.map((f) => document.fonts.load(f)))
@@ -61,8 +36,6 @@ const fontsRendered = (page) =>
 
 let exitCode
 try {
-  const sw =
-    ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker', { timeout: 10000 }))
   const base = `chrome-extension://${new URL(sw.url()).host}`
 
   const popupPath = manifest.action?.default_popup
@@ -72,7 +45,7 @@ try {
 
   if (popupPath && optionsPath) {
     const popup = await ctx.newPage()
-    watch(popup, 'popup')
+    collectErrors(popup, errors, 'popup')
     await popup.goto(`${base}/${popupPath}`, { waitUntil: 'networkidle' })
     const popupFonts = await fontsRendered(popup)
 
@@ -86,7 +59,7 @@ try {
 
     let optionsFonts = {}
     if (options) {
-      watch(options, 'options')
+      collectErrors(options, errors, 'options')
       await options.waitForLoadState('networkidle')
       optionsFonts = await fontsRendered(options)
     }
@@ -114,7 +87,6 @@ try {
   )
   exitCode = failures.length === 0 ? 0 : 1
 } finally {
-  await ctx.close()
-  rmSync(userDataDir, { recursive: true, force: true })
+  await close()
 }
 process.exit(exitCode)

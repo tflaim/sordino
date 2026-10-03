@@ -33,8 +33,15 @@ export default defineConfig({
           strict_min_version: '140.0',
           data_collection_permissions: { required: ['none'], optional: [] },
         },
+        // data_collection_permissions needs Firefox for Android 142+ (web-ext lint).
         gecko_android: { strict_min_version: '142.0' },
       },
     }),
   }),
+  hooks: {
+    // Toolbar tooltip stays the extension name, as in 1.x (WXT would use the popup <title>).
+    'build:manifestGenerated': (_wxt, manifest) => {
+      if (manifest.action) manifest.action.default_title = manifest.name
+    },
+  },
 })

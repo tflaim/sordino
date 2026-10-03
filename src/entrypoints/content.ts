@@ -1,5 +1,5 @@
 import { defineContentScript } from 'wxt/utils/define-content-script'
-import logoUrl from '@/assets/logo.png?inline'
+import logoDataUri from '@/assets/logo.png?inline'
 import { FOCUS_QUOTES } from '@/shared/quotes'
 import { getRandomSnarkyTitle } from '@/shared/snarky-titles'
 import { CONFIRM_RESET_MS } from '@/shared/types'
@@ -153,7 +153,7 @@ function createOverlay(status: BlockStatus): HTMLElement {
   logo.className = 'sordino-logo'
 
   const iconImg = document.createElement('img')
-  iconImg.src = logoUrl
+  iconImg.src = logoDataUri
   iconImg.alt = 'Sordino'
   iconImg.className = 'sordino-icon'
   logo.appendChild(iconImg)
