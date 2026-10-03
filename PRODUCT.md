@@ -47,7 +47,9 @@ between overlay moments. They do not feel watched, gamed, or graded.
 **Quiet · literate · peer-not-parent.**
 
 - **Quiet** — restraint is the identity. Animation, color, copy each must
-  justify their presence. The default move is to remove, not add.
+  justify their presence. The default move is to remove, not add. Motion is
+  welcome where it *is* the moment (the mute going in, the bypass wait, the
+  release), never as ambience.
 - **Literate** — confident in its references. Knows what a fermata is.
   Picks the Bruce Lee quote because it's the right Bruce Lee quote, not
   because quotes are a feature. Cormorant Garamond is used the way it was
@@ -96,10 +98,15 @@ soft-focus about it.)
    language, or progress bars that imply "winning." A clean number is
    enough; the user supplies the meaning.
 
-3. **Restraint as identity.** The brand voice is established by what is
-   absent. Decoration, glow, ambient motion, and clever copy all must
-   actively earn their place against the alternative of removing them.
-   When in doubt, remove.
+3. **Restraint as identity; motion carries meaning.** The brand voice is
+   established by what is absent. Decoration, glow, ambient motion, and
+   clever copy all must actively earn their place against the alternative
+   of removing them. Motion earns its place only by carrying a musical
+   event the user is already living through: the mute going in (page audio
+   fades out), the bypass wait (the gesture *is* the countdown), the
+   release (the mute lifts), the turn back (a resolving cadence). Never
+   ambient loops, never decoration. When in doubt, remove. *(Amended
+   2026-10-03, decision Q29.)*
 
 4. **Peer-not-parent in every word.** No moralizing ("Are you sure you
    want to bypass?"), no celebration ("Great job!"), no threats ("Only 1

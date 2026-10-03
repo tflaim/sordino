@@ -48,6 +48,17 @@ Source for `/to-spec`. Terms follow `GLOSSARY.md`; hard-to-reverse choices are i
 24. **First run:** welcome page on install with defaults pre-selected and private-window coverage stated; nothing is muted until the user presses Start.
 25. **Theme:** warm light theme for popup, settings and First run following `prefers-color-scheme`; the overlay stays dark.
 
+## Motion & music (grilling round 4)
+
+26. **Motion as the mechanism** (Q29 A): musical motion lives only in the four events — mute going in, bypass wait (centrepiece), bypass lifting, turn back. Premium personality; restraint elsewhere. PRODUCT.md Principle 3 amended accordingly.
+27. **Bypass wait motion is prototyped** (Q30): three gestures — Fermata (held note swells and decays), Metronome (N slow beats), Measure (a bar of rests filling) — each with the 30 s spent-budget version and a reduced-motion fallback where the plain number is the source of truth.
+28. **The literal mute** (Q31): page audio/video fades down over ~0.8 s as the overlay arrives, then pauses; fades back up when a bypass is taken.
+29. **Habituation** (Q32 C): a small rotating repertoire of motifs (like titles), explained once; plus a Sordino **Stillness** setting, independent of the OS reduced-motion setting.
+30. **Animation skills installed** (Q33): LottieFiles motion-design and delphi-ai animate, symlinked. House rule: overlay motion is CSS/WAAPI only; Framer Motion at most in extension pages.
+31. **Own line** (Q34, from the Roots teardown): an opt-in line the user writes ("Practice the Bach") that replaces the quote on the overlay. Empty by default, never tracked.
+32. **Overlay layout leans C** (headline sentence + bottom action bar), per the Roots review finding that "blocked at the wrong time" is the top complaint; motion study built on C.
+33. **Architecture first pick:** #1 Single-writer Sordino store, with #2 Muting decision behind it (`/improve-codebase-architecture`, 2026-10-03).
+
 ## Still open (answered by later skills, not grilling)
 
 - Visual direction for each surface → `/prototype` (UI branch), both themes.
