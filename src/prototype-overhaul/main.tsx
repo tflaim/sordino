@@ -33,8 +33,14 @@ const SURFACES: Record<string, { label: string; variants: Variant[]; states: { k
   usage: { label: 'Usage', variants: usageVariants as Variant[], states: [] },
 }
 
+// Hosts that only pass a bare #anchor (e.g. a published artifact) get the same state
+// as a dot-separated hash token: #surface.variant.theme[.state]
 function readParams() {
   const q = new URLSearchParams(location.search)
+  const h = location.hash.replace(/^#/, '').split('.')
+  if (!q.get('surface') && h[0]) {
+    q.set('surface', h[0]); if (h[1]) q.set('variant', h[1]); if (h[2]) q.set('theme', h[2]); if (h[3]) q.set('state', h[3])
+  }
   const surface = SURFACES[q.get('surface') ?? ''] ? q.get('surface')! : 'overlay'
   const s = SURFACES[surface]
   const variant = s.variants.some((v) => v.key === q.get('variant')) ? q.get('variant')! : 'A'
@@ -56,13 +62,18 @@ function App() {
     q.set('theme', p.theme)
     if (p.state) q.set('state', p.state)
     else q.delete('state')
-    history.replaceState(null, '', `${location.pathname}?${q.toString()}`)
+    const hash = [p.surface, p.variant, p.theme, p.state].filter(Boolean).join('.')
+    try {
+      history.replaceState(null, '', location.search ? `${location.pathname}?${q.toString()}` : `#${hash}`)
+    } catch {
+      /* sandboxed hosts may refuse; state still lives in memory */
+    }
     // The overlay is always dark; the theme param applies to the other surfaces.
     document.documentElement.dataset.theme = p.surface === 'overlay' ? 'dark' : p.theme
     document.title = `${surface.label} ${p.variant} · Sordino prototype`
   }, [p, surface.label])
 
-  const showBar = import.meta.env.DEV || p.proto
+  const showBar = import.meta.env.DEV || p.proto || import.meta.env.VITE_PROTO_BAR === '1'
   const set = (patch: Partial<typeof p>) => setP((cur) => ({ ...cur, ...patch }))
 
   return (
