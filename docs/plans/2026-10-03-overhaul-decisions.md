@@ -89,6 +89,10 @@ Source for `/to-spec`. Terms follow `GLOSSARY.md`; hard-to-reverse choices are i
 
 51. **Bypass-wait gesture: Metronome** (M1, user's pick over the recommended Measure). The wait is always N countable beats; "Bypass in N" stays visible and true.
 52. **Genre stages (exploring, prototype round 3):** each arrival *performs* the same metronome measure in a musical style — Baroque, Romantic, Impressionist, Jazz, Minimalist — as a "three.js-style" generative stage, carrying only the four musical events and going still after the release. The rotating repertoire (29) becomes a repertoire of genres. Implementation path (raw WebGL shader vs. lazily loaded three.js, which would amend ADR-0003) is decided after the prototype.
+53. **Stage size** (G1 A): the genre stage fills the overlay behind the text, kept dark and low-contrast; all text stays AA-legible and the headline leads.
+54. **Genre choice** (G2 B): a favourite genre in settings, defaulting to rotation on each arrival (explained once at First run).
+55. **No sound in 2.0** (G3 A); opt-in, click-gated genre phrase noted for the follow-up release.
+56. **Turn back is instant** (G4); any cadence plays without delaying navigation.
 
 ## Still open (answered by later skills, not grilling)
 
