@@ -75,7 +75,7 @@ export const GENRES: Genre[] = [
     marking: ['Medium swing, ♩ = 60, ♪♪ = ♩♪ (2:1)', 'Ballad, brushes, ♩ = 20'],
     events: {
       inn: 'the spot comes up on the snare, the brushes start to stir and a chromatic pickup walks into beat 1',
-      wait: 'walking bass, one dot per beat with swung skip notes, brushes circling with backbeat taps on 2 and 4, blue-note accent on beat 4; the arm swings long–short',
+      wait: 'walking bass, one dot per beat with swung skip notes, brushes circling with backbeat taps on 2 and 4, blue-note accent on beat 4 (the flat five; the flat three on beat 8 when spent); the arm swings long–short',
       release: 'tag and button: the last two notes are echoed, then one hit on the rim; the blue note bends up to the major third',
       turn: 'a fall-off: the last note slides down and the brushes stop',
     },

@@ -426,7 +426,7 @@ vec3 stage(vec2 p) {
 // blue note bends up to brass. Turn back: a fall-off and the brushes stop.
 const JAZZ = /* glsl */ `
 const float X0 = -0.90, X1 = 0.80;
-const float WALK[10] = float[10](0., 4., 5., 6., 7., 9., 7., 4., 3., 2.);  // F A Bb B C | D C A Ab G
+const float WALK[10] = float[10](0., 4., 5., 6., 7., 9., 7., 3., 2., 0.);  // F A Bb B C | D C Ab G F
 const vec3 BLUE = vec3(0.45, 0.56, 0.86);
 float wy(float st) { return -0.05 + 0.026 * st; }
 float swing(float bp) { float k = floor(bp), u = bp - k; return k + (u < 2.0 / 3.0 ? 0.75 * u : 0.5 + 1.5 * (u - 2.0 / 3.0)); }
@@ -490,7 +490,8 @@ vec3 stage(vec2 p) {
     float age = t - uOn[k];
     if (!still && age < 0.0) break;
     vec2 c = vec2(X0 + span * float(k) / uN, wy(WALK[(k - 1) % 10]));
-    bool blue = k % 4 == 0;
+    float st = WALK[(k - 1) % 10];
+    bool blue = st == 6.0 || st == 3.0;           // the flat five (B) and flat three (Ab) over F
     float thump = still ? 0.0 : exp(-age / 0.12);
     if (blue && !still) c.y -= 0.012 * exp(-age / 0.12);          // the blue note bends into pitch
     float lv = (still ? 0.6 : 0.55 + 0.45 * thump) * uDyn;
