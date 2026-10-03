@@ -1,0 +1,3 @@
+# Build the extension with WXT instead of a hand-rolled Vite config
+
+The original single Vite/Rollup build emitted shared chunks, which silently turned the content script into an ES module that browsers refuse to run as a classic script (the "C1" regression in `docs/reviews/2026-10-02/`). We considered keeping Vite and adding a separate IIFE build for the content script, but chose WXT: it bundles content scripts correctly by construction, generates one manifest for Chrome and Firefox, produces clean per-browser outputs and the AMO sources zip, and still uses Vite and React underneath. The cost is framework lock-in for the build and entrypoint layout. The `check:content` script and the overlay smoke test stay regardless, as guards on the built output.
