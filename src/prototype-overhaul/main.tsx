@@ -6,7 +6,8 @@
  * mounts its variants inside a fake host (busy forum feed, browser toolbar, settings
  * tabs) so nothing is judged in a vacuum. Extra params: ?state= for overlay
  * (normal|spent|armed), popup (schedule|mutenow|paused|off) and motion (normal|spent|own);
- * the motion surface (motion/variants.tsx) is the round-2 motion study. ?proto=1 shows the
+ * the motion surface (motion/variants.tsx) is the round-2 motion study; the stage surface
+ * (stage/variants.tsx) is round 3, genre stages. ?proto=1 shows the
  * switcher in a static build. No persistence; all state is in memory.
  * Lives on branch prototype/overhaul-ui only. Do not merge.
  */
@@ -25,13 +26,19 @@ import { popupStates } from './popup/model'
 import { firstrunVariants } from './firstrun/variants'
 import { usageVariants } from './usage/variants'
 import { motionVariants, motionStates } from './motion/variants'
+import { stageVariants, stageStates } from './stage/variants'
 
 // `extra` carries surface-specific state beyond surface/variant/theme/state (the motion
 // surface stores motion mode and motif there, e.g. #motion.F.dark.normal.still.2).
 type Variant = {
   key: string
   label: string
-  Component: (p: { state: string; extra?: string; onExtra?: (x: string) => void }) => React.ReactNode
+  Component: (p: {
+    state: string
+    extra?: string
+    onExtra?: (x: string) => void
+    nav?: { setVariant: (v: string, extra?: string) => void; setState: (s: string) => void }
+  }) => React.ReactNode
 }
 
 const SURFACES: Record<string, { label: string; variants: Variant[]; states: { key: string; label: string }[] }> = {
@@ -40,10 +47,11 @@ const SURFACES: Record<string, { label: string; variants: Variant[]; states: { k
   firstrun: { label: 'First run', variants: firstrunVariants as Variant[], states: [] },
   usage: { label: 'Usage', variants: usageVariants as Variant[], states: [] },
   motion: { label: 'Motion', variants: motionVariants, states: motionStates },
+  stage: { label: 'Genre stage', variants: stageVariants, states: stageStates },
 }
 
 // Surfaces that are always dark (the overlay and the motion study built on it).
-const DARK_ONLY = ['overlay', 'motion']
+const DARK_ONLY = ['overlay', 'motion', 'stage']
 
 // Hosts that only pass a bare #anchor (e.g. a published artifact) get the same state
 // as a dot-separated hash token: #surface.variant.theme[.state[.extra...]]
@@ -98,6 +106,7 @@ function App() {
         state={p.state}
         extra={p.extra}
         onExtra={(extra) => set({ extra })}
+        nav={{ setVariant: (variant, extra) => set(extra === undefined ? { variant } : { variant, extra }), setState: (state) => set({ state }) }}
       />
       {showBar && (
         <PrototypeSwitcher
@@ -112,7 +121,7 @@ function App() {
           theme={p.theme}
           onTheme={(theme) => set({ theme })}
           themeApplies={!DARK_ONLY.includes(p.surface)}
-          placement={p.surface === 'motion' ? 'top' : 'bottom'}
+          placement={p.surface === 'motion' || p.surface === 'stage' ? 'top' : 'bottom'}
           states={surface.states}
           state={p.state}
           onState={(state) => set({ state })}

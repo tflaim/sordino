@@ -33,6 +33,7 @@
     "@types/chrome": "^0.0.315",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^5.1.2",
     "autoprefixer": "^10.4.23",
     "class-variance-authority": "^0.7.1",
@@ -42,6 +43,7 @@
     "postcss": "^8.5.6",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",
+    "three": "^0.186.1",
     "typescript": "^5.9.3",
     "vite": "^7.3.0"
   }
