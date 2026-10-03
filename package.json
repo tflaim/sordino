@@ -10,7 +10,9 @@
     "build:firefox": "BROWSER=firefox vite build",
     "preview": "vite preview",
     "check:content": "node scripts/check-content-script.mjs",
-    "test:smoke": "node tests/e2e/overlay.smoke.mjs"
+    "test:smoke": "node tests/e2e/overlay.smoke.mjs",
+    "proto": "vite --config vite.prototype.config.ts",
+    "proto:build": "vite build --config vite.prototype.config.ts"
   },
   "keywords": [
     "browser-extension",
@@ -25,6 +27,8 @@
     "react-dom": "^19.2.3"
   },
   "devDependencies": {
+    "@fontsource/cormorant-garamond": "^5.3.0",
+    "@fontsource/dm-sans": "^5.3.0",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/chrome": "^0.0.315",
     "@types/react": "^19.2.7",

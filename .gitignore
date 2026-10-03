@@ -7,3 +7,4 @@ dist/
 CLAUDE.md
 sordino-chrome.zip
 .claude/worktrees/
+dist-proto/

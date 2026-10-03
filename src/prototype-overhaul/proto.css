@@ -1,0 +1,139 @@
+/* PROTOTYPE — throwaway tokens for the Sordino 2.0 UI prototype.
+   Contrast checked (WCAG 2.1): muted text >= 4.9:1 on every surface it sits on,
+   control outlines >= 3:1, brass button label >= 4.9:1. */
+@import 'tailwindcss' source('.');
+
+/* Light (warm paper) is the base; dark is applied by data-theme or system preference. */
+:root,
+[data-theme='light'] {
+  --bg: #f5efe6;
+  --surface: #fdf9f3;
+  --surface-2: #ece4d8;
+  --fg: #2a221c;
+  --muted: #6b5a49; /* 5.77 on bg, 6.29 on surface, 5.23 on surface-2 */
+  --line: #ddd2c3; /* decorative hairline only */
+  --control: #8c7862; /* control outlines: 3.69 on bg */
+  --brass: #b07f35; /* fill; label #1c1917 = 4.94, edge vs bg = 3.10 */
+  --on-brass: #1c1917;
+  --brass-ink: #7a5a1e; /* brass as text: 5.55 on bg */
+  --brass-tint: #efe0c4;
+  --ring: #7a5a1e;
+  color-scheme: light;
+}
+
+[data-theme='dark'],
+.force-dark {
+  --bg: #1c1917;
+  --surface: #28231f;
+  --surface-2: #332b26;
+  --fg: #eae2d7;
+  --muted: #a89785; /* 6.19 on bg, 5.50 on surface, 4.91 on surface-2 (v1 was 2.1–2.9) */
+  --line: #3f352d;
+  --control: #7a6a58; /* 3.36 on bg */
+  --brass: #cca766; /* label #1c1917 = 7.73 */
+  --on-brass: #1c1917;
+  --brass-ink: #cca766;
+  --brass-tint: #3a3024;
+  --ring: #e0bf80;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme='system'] {
+    --bg: #1c1917;
+    --surface: #28231f;
+    --surface-2: #332b26;
+    --fg: #eae2d7;
+    --muted: #a89785;
+    --line: #3f352d;
+    --control: #7a6a58;
+    --brass: #cca766;
+    --on-brass: #1c1917;
+    --brass-ink: #cca766;
+    --brass-tint: #3a3024;
+    --ring: #e0bf80;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-control: var(--control);
+  --color-brass: var(--brass);
+  --color-on-brass: var(--on-brass);
+  --color-brass-ink: var(--brass-ink);
+  --color-brass-tint: var(--brass-tint);
+  --color-ring: var(--ring);
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* One focus ring for everything: visible on every surface, both themes. */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cormorant's default old-style figures make times like 17:00 wobble; use lining. */
+.font-display {
+  font-variant-numeric: lining-nums proportional-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Entry fade only (no ambient motion), and only when motion is welcome. */
+@media (prefers-reduced-motion: no-preference) {
+  .enter-fade {
+    animation: enter-fade 240ms ease-out both;
+  }
+  @keyframes enter-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .ease-colors {
+    transition:
+      background-color 150ms ease-out,
+      color 150ms ease-out,
+      border-color 150ms ease-out;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
