@@ -8,7 +8,9 @@
     "build": "vite build",
     "build:chrome": "vite build",
     "build:firefox": "BROWSER=firefox vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:content": "node scripts/check-content-script.mjs",
+    "test:smoke": "node tests/e2e/overlay.smoke.mjs"
   },
   "keywords": [
     "browser-extension",
@@ -32,6 +34,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.562.0",
+    "playwright": "1.56.1",
     "postcss": "^8.5.6",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",
