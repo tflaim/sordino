@@ -47,8 +47,6 @@ Sordino requests the following permissions:
 | Permission | Why It's Needed |
 |------------|-----------------|
 | `storage` | Save your settings locally on your device |
-| `tabs` | Detect when you navigate to update blocking status |
-| `activeTab` | Interact with the current tab to show/hide overlays |
 | `alarms` | Check schedules periodically |
 | `<all_urls>` | Block any website you configure (you control which sites) |
 

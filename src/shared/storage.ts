@@ -1,4 +1,4 @@
-import { SordinoSettings, DEFAULT_SETTINGS } from './types'
+import { type SordinoSettings, DEFAULT_SETTINGS } from './types'
 
 const STORAGE_KEY = 'sordino_settings'
 
@@ -39,7 +39,9 @@ function mergeWithDefaults(stored: Partial<SordinoSettings>): SordinoSettings {
       ...DEFAULT_SETTINGS.weeklyStats,
       ...stored.weeklyStats,
       siteStats: stored.weeklyStats?.siteStats ?? DEFAULT_SETTINGS.weeklyStats.siteStats,
-      emergencyRefreshesUsed: stored.weeklyStats?.emergencyRefreshesUsed ?? DEFAULT_SETTINGS.weeklyStats.emergencyRefreshesUsed,
+      emergencyRefreshesUsed:
+        stored.weeklyStats?.emergencyRefreshesUsed ??
+        DEFAULT_SETTINGS.weeklyStats.emergencyRefreshesUsed,
     },
     // Arrays should use stored values if they exist, otherwise defaults
     schedules: stored.schedules ?? DEFAULT_SETTINGS.schedules,
@@ -74,27 +76,24 @@ export async function updateSettings(
   updater: (settings: SordinoSettings) => SordinoSettings
 ): Promise<SordinoSettings> {
   // Chain this update after all pending updates
-  updateQueue = updateQueue.then(async () => {
-    const current = await getSettings()
-    const updated = updater(current)
-    await saveSettings(updated)
-    return updated
-  }).catch(async (error) => {
-    console.error('Sordino: Error updating settings', error)
-    // On error, try to return current settings
-    return getSettings()
-  })
+  updateQueue = updateQueue
+    .then(async () => {
+      const current = await getSettings()
+      const updated = updater(current)
+      await saveSettings(updated)
+      return updated
+    })
+    .catch(async (error) => {
+      console.error('Sordino: Error updating settings', error)
+      // On error, try to return current settings
+      return getSettings()
+    })
 
   return updateQueue
 }
 
-export function subscribeToSettings(
-  callback: (settings: SordinoSettings) => void
-): () => void {
-  const listener = (
-    changes: { [key: string]: chrome.storage.StorageChange },
-    areaName: string
-  ) => {
+export function subscribeToSettings(callback: (settings: SordinoSettings) => void): () => void {
+  const listener = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
     if (areaName === 'local' && changes[STORAGE_KEY]) {
       // Merge with defaults to handle new fields
       callback(mergeWithDefaults(changes[STORAGE_KEY].newValue))

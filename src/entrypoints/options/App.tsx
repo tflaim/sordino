@@ -1,10 +1,32 @@
 import { useEffect, useState, useRef } from 'react'
-import { getSettings, updateSettings as updateSettingsQueued, subscribeToSettings } from '../shared/storage'
-import type { SordinoSettings, Schedule, Category, DayOfWeek } from '../shared/types'
-import { TEMPLATE_SCHEDULE_IDS, DEFAULT_SCHEDULES, getLocalDateString, MAX_QUICK_BYPASSES, CONFIRM_RESET_MS } from '../shared/types'
-import { cn } from '../shared/utils'
-import { shouldBlock, getActiveSchedule, formatEndTime } from '../shared/schedule'
-import { Plus, Trash2, X, Check, ChevronDown, RefreshCw, BarChart3, Settings, Activity, AlertCircle } from 'lucide-react'
+import {
+  getSettings,
+  updateSettings as updateSettingsQueued,
+  subscribeToSettings,
+} from '@/shared/storage'
+import type { SordinoSettings, Schedule, Category, DayOfWeek } from '@/shared/types'
+import {
+  TEMPLATE_SCHEDULE_IDS,
+  DEFAULT_SCHEDULES,
+  getLocalDateString,
+  MAX_QUICK_BYPASSES,
+  CONFIRM_RESET_MS,
+} from '@/shared/types'
+import { cn } from '@/shared/utils'
+import { shouldBlock, getActiveSchedule, formatEndTime } from '@/shared/schedule'
+import {
+  Plus,
+  Trash2,
+  X,
+  Check,
+  ChevronDown,
+  RefreshCw,
+  BarChart3,
+  Settings,
+  Activity,
+  AlertCircle,
+} from 'lucide-react'
+import logoUrl from '@/assets/logo.png'
 
 type Tab = 'settings' | 'usage'
 
@@ -53,7 +75,7 @@ function App() {
             the Settings surface doesn't carry two indicators of the same
             information at the same time. */}
         <div className="flex items-center gap-3 mb-6">
-          <img src="icons/logo.png" alt="Sordino" className="w-8 h-8" />
+          <img src={logoUrl} alt="Sordino" className="w-8 h-8" />
           <h1 className="font-serif text-2xl font-medium tracking-wide text-primary">Sordino</h1>
         </div>
 
@@ -62,10 +84,10 @@ function App() {
           <button
             onClick={() => setActiveTab('settings')}
             className={cn(
-              "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+              'flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
               activeTab === 'settings'
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
             )}
           >
             <Settings className="w-4 h-4" />
@@ -74,10 +96,10 @@ function App() {
           <button
             onClick={() => setActiveTab('usage')}
             className={cn(
-              "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+              'flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
               activeTab === 'usage'
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
             )}
           >
             <Activity className="w-4 h-4" />
@@ -148,7 +170,9 @@ function App() {
 
               {/* Categories */}
               <div className="mb-6">
-                <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-3">Categories</h3>
+                <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-3">
+                  Categories
+                </h3>
                 <div className="space-y-3">
                   {settings.categories.map((category) => (
                     <CategoryCard
@@ -177,7 +201,9 @@ function App() {
 
               {/* Custom Sites */}
               <div>
-                <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-3">Custom Sites</h3>
+                <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-3">
+                  Custom Sites
+                </h3>
                 <div className="space-y-2 mb-3">
                   {settings.customSites.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No custom sites added.</p>
@@ -217,7 +243,9 @@ function App() {
 
             {/* Bypass Settings Section */}
             <section className="mb-10">
-              <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Bypass Settings</h2>
+              <h2 className="font-serif text-xl font-medium mb-4 text-foreground">
+                Bypass Settings
+              </h2>
               <BypassSettings settings={settings} onUpdate={updateSettings} />
             </section>
           </>
@@ -259,13 +287,16 @@ function Footer() {
       {showHelp && (
         <div className="rounded-lg bg-secondary/30 border border-border/40 p-4 text-sm text-foreground space-y-2">
           <p>
-            Sordino blocks distracting sites softly. The overlay always offers a bypass; the bypass is the product.
+            Sordino blocks distracting sites softly. The overlay always offers a bypass; the bypass
+            is the product.
           </p>
           <p>
-            You get a fixed number of quick bypasses per day, reset at midnight. The count is set in Bypass Settings.
+            You get a fixed number of quick bypasses per day, reset at midnight. The count is set in
+            Bypass Settings.
           </p>
           <p>
-            Blocking runs on whichever schedules you turn on. Multiple schedules can overlap; if any one is active, blocking is active.
+            Blocking runs on whichever schedules you turn on. Multiple schedules can overlap; if any
+            one is active, blocking is active.
           </p>
         </div>
       )}
@@ -300,7 +331,9 @@ function Footer() {
           </a>
         </div>
       </div>
-      <p className="text-muted-foreground/50">Stored on this device. Nothing leaves your browser.</p>
+      <p className="text-muted-foreground/50">
+        Stored on this device. Nothing leaves your browser.
+      </p>
     </footer>
   )
 }
@@ -365,12 +398,13 @@ function MusicalDivider() {
 // as one sentence per state, no parental prefix, no end-of-line period
 // (matches the no-period pill convention elsewhere).
 function RightNowCallout({ settings }: { settings: SordinoSettings }) {
+  // eslint-disable-next-line react-hooks/purity -- 1.x surface, rebuilt in 2.0
   const isPaused = !!settings.blockState.pausedUntil && Date.now() < settings.blockState.pausedUntil
   const isManualOn = settings.blockState.manualOverride === 'on'
-  const isActive = !isPaused && (
-    isManualOn ||
-    (settings.blockState.manualOverride === null && shouldBlock(settings).shouldBlock)
-  )
+  const isActive =
+    !isPaused &&
+    (isManualOn ||
+      (settings.blockState.manualOverride === null && shouldBlock(settings).shouldBlock))
   const activeSchedule = isActive && !isManualOn ? getActiveSchedule(settings.schedules) : null
 
   let body: string
@@ -389,7 +423,7 @@ function RightNowCallout({ settings }: { settings: SordinoSettings }) {
 
   return (
     <div className="mb-8 flex items-center gap-2.5 px-4 py-2.5 rounded-lg bg-secondary/30 border border-border/40 text-sm">
-      <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", dotColor)} aria-hidden />
+      <div className={cn('w-2.5 h-2.5 rounded-full shrink-0', dotColor)} aria-hidden />
       <p className="text-foreground">{body}</p>
     </div>
   )
@@ -402,14 +436,16 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
       aria-checked={checked}
       onClick={onChange}
       className={cn(
-        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200",
-        checked ? "bg-primary" : "bg-secondary"
+        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200',
+        checked ? 'bg-primary' : 'bg-secondary'
       )}
     >
-      <span className={cn(
-        "inline-block h-5 w-5 rounded-full bg-foreground shadow-sm transition-transform duration-200",
-        checked ? "translate-x-[22px]" : "translate-x-[2px]"
-      )} />
+      <span
+        className={cn(
+          'inline-block h-5 w-5 rounded-full bg-foreground shadow-sm transition-transform duration-200',
+          checked ? 'translate-x-[22px]' : 'translate-x-[2px]'
+        )}
+      />
     </button>
   )
 }
@@ -448,7 +484,7 @@ function ScheduleCard({
   }
 
   const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(':').map(Number)
+    const [hours, minutes] = time.split(':').map(Number) as [number, number]
     const h = hours % 12 || 12
     const ampm = hours >= 12 ? 'PM' : 'AM'
     return `${h}:${minutes.toString().padStart(2, '0')} ${ampm}`
@@ -479,10 +515,10 @@ function ScheduleCard({
                   setEditedSchedule({ ...editedSchedule, days })
                 }}
                 className={cn(
-                  "w-8 h-8 rounded-full text-xs font-medium transition-colors duration-150 ease-out",
+                  'w-8 h-8 rounded-full text-xs font-medium transition-colors duration-150 ease-out',
                   editedSchedule.days.includes(day.key)
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-secondary text-muted-foreground hover:bg-secondary/80"
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
                 )}
               >
                 {day.short}
@@ -541,10 +577,10 @@ function ScheduleCard({
   return (
     <div
       className={cn(
-        "rounded-xl border p-4 transition-[background-color,border-color,opacity] duration-200 ease-out",
+        'rounded-xl border p-4 transition-[background-color,border-color,opacity] duration-200 ease-out',
         schedule.enabled
-          ? "bg-secondary/30 border-border"
-          : "bg-transparent border-border/50 opacity-60"
+          ? 'bg-secondary/30 border-border'
+          : 'bg-transparent border-border/50 opacity-60'
       )}
     >
       <div className="flex items-start justify-between">
@@ -553,7 +589,8 @@ function ScheduleCard({
           <div>
             <p className="font-medium">{schedule.name}</p>
             <p className="text-sm text-muted-foreground">
-              {formatDays(schedule.days)} • {formatTime(schedule.startTime)} - {formatTime(schedule.endTime)}
+              {formatDays(schedule.days)} • {formatTime(schedule.startTime)} -{' '}
+              {formatTime(schedule.endTime)}
             </p>
           </div>
         </div>
@@ -562,7 +599,10 @@ function ScheduleCard({
             {isConfirmingDelete ? (
               <>
                 <button
-                  onClick={() => { setIsConfirmingDelete(false); onDelete() }}
+                  onClick={() => {
+                    setIsConfirmingDelete(false)
+                    onDelete()
+                  }}
                   className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-foreground hover:bg-secondary transition-colors duration-150 ease-out"
                 >
                   <Trash2 className="w-3 h-3" />
@@ -594,9 +634,7 @@ function ScheduleCard({
             )}
           </div>
         )}
-        {isTemplate && (
-          <span className="text-xs text-muted-foreground/60 px-2 py-1">Template</span>
-        )}
+        {isTemplate && <span className="text-xs text-muted-foreground/60 px-2 py-1">Template</span>}
       </div>
     </div>
   )
@@ -605,10 +643,11 @@ function ScheduleCard({
 // Check if a schedule matches a template schedule
 function matchesTemplateSchedule(schedule: Schedule): Schedule | null {
   for (const template of DEFAULT_SCHEDULES) {
-    const sameDays = schedule.days.length === template.days.length &&
-      schedule.days.every(d => template.days.includes(d))
-    const sameTime = schedule.startTime === template.startTime &&
-      schedule.endTime === template.endTime
+    const sameDays =
+      schedule.days.length === template.days.length &&
+      schedule.days.every((d) => template.days.includes(d))
+    const sameTime =
+      schedule.startTime === template.startTime && schedule.endTime === template.endTime
     if (sameDays && sameTime) {
       return template
     }
@@ -634,7 +673,10 @@ function AddScheduleButton({ onAdd }: { onAdd: (schedule: Schedule) => void }) {
 
     const matchedTemplate = matchesTemplateSchedule(schedule)
     if (matchedTemplate) {
-      setDuplicateWarning(`This matches the "${matchedTemplate.name}" template. Consider using that instead.`)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 1.x surface, rebuilt in 2.0
+      setDuplicateWarning(
+        `This matches the "${matchedTemplate.name}" template. Consider using that instead.`
+      )
     } else {
       setDuplicateWarning(null)
     }
@@ -683,10 +725,10 @@ function AddScheduleButton({ onAdd }: { onAdd: (schedule: Schedule) => void }) {
                   setSchedule({ ...schedule, days })
                 }}
                 className={cn(
-                  "w-8 h-8 rounded-full text-xs font-medium transition-colors duration-150 ease-out",
+                  'w-8 h-8 rounded-full text-xs font-medium transition-colors duration-150 ease-out',
                   schedule.days.includes(day.key)
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-secondary text-muted-foreground hover:bg-secondary/80"
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
                 )}
               >
                 {day.short}
@@ -785,12 +827,14 @@ function CategoryCard({
   }
 
   return (
-    <div className={cn(
-      "rounded-xl border overflow-hidden transition-[background-color,border-color,opacity] duration-200 ease-out",
-      category.enabled
-        ? "bg-secondary/30 border-border"
-        : "bg-transparent border-border/50 opacity-60"
-    )}>
+    <div
+      className={cn(
+        'rounded-xl border overflow-hidden transition-[background-color,border-color,opacity] duration-200 ease-out',
+        category.enabled
+          ? 'bg-secondary/30 border-border'
+          : 'bg-transparent border-border/50 opacity-60'
+      )}
+    >
       {/* Header */}
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-3">
@@ -809,8 +853,8 @@ function CategoryCard({
           {isExpanded ? 'Hide' : 'Show'} sites
           <ChevronDown
             className={cn(
-              "w-3.5 h-3.5 transition-transform duration-200 ease-out",
-              isExpanded && "rotate-180"
+              'w-3.5 h-3.5 transition-transform duration-200 ease-out',
+              isExpanded && 'rotate-180'
             )}
           />
         </button>
@@ -819,8 +863,8 @@ function CategoryCard({
       {/* Expandable sites list - using grid for smooth height animation */}
       <div
         className={cn(
-          "grid transition-[grid-template-rows] duration-250 ease-out",
-          isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+          'grid transition-[grid-template-rows] duration-250 ease-out',
+          isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
         )}
       >
         <div className="overflow-hidden">
@@ -832,20 +876,20 @@ function CategoryCard({
                   <div
                     key={site}
                     className={cn(
-                      "flex items-center justify-between px-3 py-2 rounded-lg border transition-opacity duration-150",
+                      'flex items-center justify-between px-3 py-2 rounded-lg border transition-opacity duration-150',
                       isEnabled
-                        ? "bg-background/50 border-border/30"
-                        : "bg-transparent border-border/20 opacity-50"
+                        ? 'bg-background/50 border-border/30'
+                        : 'bg-transparent border-border/20 opacity-50'
                     )}
                   >
                     <span className="text-sm">{site}</span>
                     <button
                       onClick={() => handleToggleSite(site)}
                       className={cn(
-                        "w-5 h-5 rounded border-2 flex items-center justify-center transition-colors duration-150 ease-out",
+                        'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors duration-150 ease-out',
                         isEnabled
-                          ? "bg-primary border-primary text-primary-foreground"
-                          : "border-muted-foreground hover:border-primary/50"
+                          ? 'bg-primary border-primary text-primary-foreground'
+                          : 'border-muted-foreground hover:border-primary/50'
                       )}
                     >
                       {isEnabled && <Check className="w-3 h-3" />}
@@ -864,12 +908,22 @@ function CategoryCard({
   )
 }
 
-function AddSiteInput({ onAdd, existingSites }: { onAdd: (site: string) => void; existingSites: string[] }) {
+function AddSiteInput({
+  onAdd,
+  existingSites,
+}: {
+  onAdd: (site: string) => void
+  existingSites: string[]
+}) {
   const [site, setSite] = useState('')
   const [error, setError] = useState('')
 
   const handleAdd = () => {
-    const cleanSite = site.trim().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
+    const cleanSite = site
+      .trim()
+      .replace(/^https?:\/\//, '')
+      .replace(/^www\./, '')
+      .split('/')[0]
 
     if (!cleanSite) {
       setError('Please enter a site')
@@ -936,7 +990,8 @@ function NumberStepper({
         −
       </button>
       <span className="text-sm font-medium w-12 text-center tabular-nums">
-        {value}{suffix}
+        {value}
+        {suffix}
       </span>
       <button
         onClick={() => onChange(Math.min(max, value + 1))}
@@ -949,7 +1004,10 @@ function NumberStepper({
   )
 }
 
-function BypassSettings({ settings, onUpdate }: {
+function BypassSettings({
+  settings,
+  onUpdate,
+}: {
   settings: SordinoSettings
   onUpdate: (updater: (s: SordinoSettings) => SordinoSettings) => void
 }) {
@@ -978,9 +1036,7 @@ function BypassSettings({ settings, onUpdate }: {
         <div className="flex items-center justify-between">
           <div>
             <p className="font-medium">Bypass duration</p>
-            <p className="text-sm text-muted-foreground">
-              How long each bypass lasts
-            </p>
+            <p className="text-sm text-muted-foreground">How long each bypass lasts</p>
           </div>
           <NumberStepper
             value={bypassDuration}
@@ -1001,7 +1057,9 @@ function BypassSettings({ settings, onUpdate }: {
           </div>
           <Toggle
             checked={settings.scaffoldingMode ?? false}
-            onChange={() => onUpdate((s) => ({ ...s, scaffoldingMode: !(s.scaffoldingMode ?? false) }))}
+            onChange={() =>
+              onUpdate((s) => ({ ...s, scaffoldingMode: !(s.scaffoldingMode ?? false) }))
+            }
           />
         </div>
       </div>
@@ -1011,7 +1069,9 @@ function BypassSettings({ settings, onUpdate }: {
 
 function BypassBudget({ settings }: { settings: SordinoSettings }) {
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [refreshResult, setRefreshResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [refreshResult, setRefreshResult] = useState<{ success: boolean; message: string } | null>(
+    null
+  )
   const [countdown, setCountdown] = useState('')
 
   const maxBypasses = settings.maxBypasses ?? MAX_QUICK_BYPASSES
@@ -1082,13 +1142,19 @@ function BypassBudget({ settings }: { settings: SordinoSettings }) {
             style={{ width: `${(bypassesRemaining / maxBypasses) * 100}%` }}
           />
         </div>
-        <p className="text-xs text-muted-foreground mt-2">Resets at midnight ({countdown} remaining)</p>
+        <p className="text-xs text-muted-foreground mt-2">
+          Resets at midnight ({countdown} remaining)
+        </p>
       </div>
 
-      <div className={cn(
-        "rounded-xl border p-4",
-        refreshAvailable ? "border-border bg-secondary/30" : "border-border/50 bg-secondary/10 opacity-60"
-      )}>
+      <div
+        className={cn(
+          'rounded-xl border p-4',
+          refreshAvailable
+            ? 'border-border bg-secondary/30'
+            : 'border-border/50 bg-secondary/10 opacity-60'
+        )}
+      >
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
             <p className="font-medium">Emergency Refresh</p>
@@ -1102,18 +1168,23 @@ function BypassBudget({ settings }: { settings: SordinoSettings }) {
             onClick={handleEmergencyRefresh}
             disabled={!refreshAvailable || isRefreshing}
             className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150",
+              'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150',
               refreshAvailable
-                ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                : "bg-secondary text-muted-foreground cursor-not-allowed"
+                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                : 'bg-secondary text-muted-foreground cursor-not-allowed'
             )}
           >
-            <RefreshCw className={cn("w-4 h-4", isRefreshing && "motion-safe:animate-spin")} />
+            <RefreshCw className={cn('w-4 h-4', isRefreshing && 'motion-safe:animate-spin')} />
             Refresh
           </button>
         </div>
         {refreshResult && (
-          <p className={cn("text-sm mt-3", refreshResult.success ? "text-success" : "text-destructive")}>
+          <p
+            className={cn(
+              'text-sm mt-3',
+              refreshResult.success ? 'text-success' : 'text-destructive'
+            )}
+          >
             {refreshResult.message}
           </p>
         )}
@@ -1143,14 +1214,14 @@ function WeeklyStatsChart({ settings }: { settings: SordinoSettings }) {
       const isToday = dateStr === settings.stats.date
 
       // Find stats for this day
-      let dayStats = settings.weeklyStats.days.find(d => d.date === dateStr)
+      let dayStats = settings.weeklyStats.days.find((d) => d.date === dateStr)
 
       // If it's today, use current stats
       if (isToday) {
         dayStats = {
           date: dateStr,
           blocksTriggered: settings.stats.blocksTriggered,
-          bypassesUsed: settings.stats.bypassesUsed
+          bypassesUsed: settings.stats.bypassesUsed,
         }
       }
 
@@ -1160,7 +1231,7 @@ function WeeklyStatsChart({ settings }: { settings: SordinoSettings }) {
         blocks: dayStats?.blocksTriggered ?? 0,
         bypasses: dayStats?.bypassesUsed ?? 0,
         isToday,
-        isFuture: date > today
+        isFuture: date > today,
       }
     })
 
@@ -1168,7 +1239,7 @@ function WeeklyStatsChart({ settings }: { settings: SordinoSettings }) {
   }
 
   const weekData = getWeekData()
-  const maxValue = Math.max(...weekData.map(d => Math.max(d.blocks, d.bypasses)), 1)
+  const maxValue = Math.max(...weekData.map((d) => Math.max(d.blocks, d.bypasses)), 1)
   const totalBlocks = weekData.reduce((sum, d) => sum + d.blocks, 0)
   const totalBypasses = weekData.reduce((sum, d) => sum + d.bypasses, 0)
   const emergencyRefreshes = settings.weeklyStats.emergencyRefreshesUsed || 0
@@ -1213,50 +1284,61 @@ function WeeklyStatsChart({ settings }: { settings: SordinoSettings }) {
           </div>
         </div>
         <div className="flex items-end gap-3">
-          {weekData.filter(day => !day.isFuture).map((day) => {
-            const maxBarHeight = 72
-            const blocksHeight = day.blocks > 0 ? Math.max((day.blocks / maxValue) * maxBarHeight, 6) : 0
-            const bypassesHeight = day.bypasses > 0 ? Math.max((day.bypasses / maxValue) * maxBarHeight, 6) : 0
+          {weekData
+            .filter((day) => !day.isFuture)
+            .map((day) => {
+              const maxBarHeight = 72
+              const blocksHeight =
+                day.blocks > 0 ? Math.max((day.blocks / maxValue) * maxBarHeight, 6) : 0
+              const bypassesHeight =
+                day.bypasses > 0 ? Math.max((day.bypasses / maxValue) * maxBarHeight, 6) : 0
 
-            return (
-              <div key={day.day} className="flex-1 flex flex-col items-center gap-1">
-                <div className="flex items-end justify-center gap-1.5" style={{ height: maxBarHeight + 16 }}>
-                  <div className="flex flex-col items-center justify-end h-full w-5">
-                    {day.blocks > 0 && (
-                      <span className="text-[10px] text-muted-foreground mb-0.5 tabular-nums">{day.blocks}</span>
-                    )}
-                    {blocksHeight > 0 && (
-                      <div
-                        className={cn(
-                          "w-full rounded-t-sm transition-colors duration-300",
-                          day.isToday ? "bg-primary" : "bg-primary/60"
-                        )}
-                        style={{ height: `${blocksHeight}px` }}
-                      />
-                    )}
+              return (
+                <div key={day.day} className="flex-1 flex flex-col items-center gap-1">
+                  <div
+                    className="flex items-end justify-center gap-1.5"
+                    style={{ height: maxBarHeight + 16 }}
+                  >
+                    <div className="flex flex-col items-center justify-end h-full w-5">
+                      {day.blocks > 0 && (
+                        <span className="text-[10px] text-muted-foreground mb-0.5 tabular-nums">
+                          {day.blocks}
+                        </span>
+                      )}
+                      {blocksHeight > 0 && (
+                        <div
+                          className={cn(
+                            'w-full rounded-t-sm transition-colors duration-300',
+                            day.isToday ? 'bg-primary' : 'bg-primary/60'
+                          )}
+                          style={{ height: `${blocksHeight}px` }}
+                        />
+                      )}
+                    </div>
+                    <div className="flex flex-col items-center justify-end h-full w-5">
+                      {day.bypasses > 0 && (
+                        <span className="text-[10px] text-muted-foreground mb-0.5 tabular-nums">
+                          {day.bypasses}
+                        </span>
+                      )}
+                      {bypassesHeight > 0 && (
+                        <div
+                          className={cn(
+                            'w-full rounded-t-sm transition-colors duration-300',
+                            day.isToday ? 'bg-info' : 'bg-info/60'
+                          )}
+                          style={{ height: `${bypassesHeight}px` }}
+                        />
+                      )}
+                    </div>
                   </div>
-                  <div className="flex flex-col items-center justify-end h-full w-5">
-                    {day.bypasses > 0 && (
-                      <span className="text-[10px] text-muted-foreground mb-0.5 tabular-nums">{day.bypasses}</span>
-                    )}
-                    {bypassesHeight > 0 && (
-                      <div
-                        className={cn(
-                          "w-full rounded-t-sm transition-colors duration-300",
-                          day.isToday ? "bg-info" : "bg-info/60"
-                        )}
-                        style={{ height: `${bypassesHeight}px` }}
-                      />
-                    )}
+                  <div className="flex flex-col items-center">
+                    <span className="text-xs text-muted-foreground">{day.day}</span>
+                    {day.isToday && <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1" />}
                   </div>
                 </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-xs text-muted-foreground">{day.day}</span>
-                  {day.isToday && <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1" />}
-                </div>
-              </div>
-            )
-          })}
+              )
+            })}
         </div>
       </div>
     </div>
@@ -1296,13 +1378,13 @@ function TopSitesDisplay({ settings }: { settings: SordinoSettings }) {
 
   // Get top blocked sites
   const topBlocked = Object.entries(siteStats)
-    .filter(([_, stats]) => stats.blocks > 0)
+    .filter(([, stats]) => stats.blocks > 0)
     .sort((a, b) => b[1].blocks - a[1].blocks)
     .slice(0, 5)
 
   // Get top bypassed sites
   const topBypassed = Object.entries(siteStats)
-    .filter(([_, stats]) => stats.bypasses > 0)
+    .filter(([, stats]) => stats.bypasses > 0)
     .sort((a, b) => b[1].bypasses - a[1].bypasses)
     .slice(0, 5)
 

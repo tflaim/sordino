@@ -76,7 +76,7 @@ npm install
 npm run build        # builds both Chrome and Firefox
 ```
 
-Output: `dist/chrome/` and `dist/firefox/`
+Output: `.output/chrome-mv3/` and `.output/firefox-mv3/`
 
 ## Development
 
@@ -84,39 +84,41 @@ Output: `dist/chrome/` and `dist/firefox/`
 
 - **React 19** + **TypeScript**
 - **Tailwind CSS v4**
-- **Vite** — build tooling
-- **Chrome Extension Manifest V3**
+- **[WXT](https://wxt.dev)** — build tooling (Vite underneath); one source for Chrome and Firefox
+- **Manifest V3**
 
 ### Project Structure
 
 ```
 src/
-├── background/       # Service worker (scheduling, bypass logic, stats)
-├── content/          # Content script (overlay injection)
-├── popup/            # Browser action popup UI
-├── settings/         # Full settings page
-├── shared/           # Shared types, storage, utilities
-│   ├── types.ts      # TypeScript interfaces & constants
-│   ├── storage.ts    # Chrome storage wrapper
-│   ├── schedule.ts   # Schedule matching logic
-│   ├── quotes.ts     # Motivational quotes
-│   └── snarky-titles.ts  # Music-themed titles
-└── index.css         # Global styles
+├── entrypoints/      # WXT entrypoints
+│   ├── background.ts # Background (scheduling, bypass logic, stats)
+│   ├── content.ts    # Content script (the overlay)
+│   ├── popup/        # Toolbar popup
+│   └── options/      # Settings page (the browser's Options entry)
+├── assets/           # Bundled assets (logo)
+└── shared/           # Shared types, storage, schedule logic, styles, fonts
 
-public/
-├── manifest.json         # Chrome manifest
-├── manifest.firefox.json # Firefox manifest
-└── icons/                # Extension icons
+public/icons/         # Extension icons
+scripts/              # Post-build guards
+tests/e2e/            # Playwright smoke tests against the built extension
+wxt.config.ts         # Manifest and build config for both browsers
 ```
 
 ### Scripts
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start dev server with HMR |
-| `npm run build` | Build for production (Chrome + Firefox) |
-| `npm run build:chrome` | Build Chrome only |
-| `npm run build:firefox` | Build Firefox only |
+| `npm run dev` | Run the extension in a dev browser with reload (`dev:firefox` for Firefox) |
+| `npm run build` | Clean, typecheck, build Chrome and Firefox, check the content script |
+| `npm run build:chrome` / `build:firefox` | Build one browser only |
+| `npm run typecheck` | `tsc` over the whole project |
+| `npm run lint` | ESLint and Prettier check |
+| `npm test` | Unit tests (Vitest) |
+| `npm run test:smoke` | Playwright smoke tests: overlay on a muted site, popup and settings make no network requests |
+| `npm run lint:firefox` | `web-ext lint` on the Firefox build |
+
+A pre-commit hook formats staged files and runs typecheck and tests. CI runs every check on each push.
 
 ## Support
 

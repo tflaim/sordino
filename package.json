@@ -4,13 +4,20 @@
   "description": "Soft-block distracting websites with psychological friction, not force.",
   "type": "module",
   "scripts": {
-    "dev": "vite build --watch",
-    "build": "vite build",
-    "build:chrome": "vite build",
-    "build:firefox": "BROWSER=firefox vite build",
-    "preview": "vite preview",
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt clean && npm run typecheck && npm run build:chrome && npm run build:firefox && npm run check:content",
+    "build:chrome": "wxt build -b chrome",
+    "build:firefox": "wxt build -b firefox",
+    "typecheck": "wxt prepare && tsc --noEmit",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "test": "vitest run",
     "check:content": "node scripts/check-content-script.mjs",
-    "test:smoke": "node tests/e2e/overlay.smoke.mjs"
+    "test:smoke": "node tests/e2e/overlay.smoke.mjs && node tests/e2e/pages.smoke.mjs",
+    "lint:firefox": "web-ext lint --source-dir .output/firefox-mv3",
+    "postinstall": "wxt prepare",
+    "prepare": "husky"
   },
   "keywords": [
     "browser-extension",
@@ -21,24 +28,38 @@
   "author": "Tommy Flaim",
   "license": "MIT",
   "dependencies": {
+    "@fontsource/cormorant-garamond": "^5.3.0",
+    "@fontsource/dm-sans": "^5.3.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/chrome": "^0.0.315",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.2",
-    "autoprefixer": "^10.4.23",
-    "class-variance-authority": "^0.7.1",
+    "@wxt-dev/module-react": "^1.2.2",
     "clsx": "^2.1.1",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "lucide-react": "^0.562.0",
     "playwright": "1.56.1",
     "postcss": "^8.5.6",
+    "prettier": "^3.9.9",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
-    "vite": "^7.3.0"
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^5.0.3",
+    "web-ext": "^10.7.0",
+    "wxt": "^0.21.4"
+  },
+  "engines": {
+    "node": ">=20.19"
   }
 }

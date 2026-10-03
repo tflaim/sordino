@@ -1,9 +1,12 @@
 node_modules/
+.output/
+.wxt/
+web-ext-artifacts/
 dist/
+*.zip
 .DS_Store
 *.log
 .env
 .env.local
 CLAUDE.md
-sordino-chrome.zip
 .claude/worktrees/
