@@ -85,6 +85,11 @@ Source for `/to-spec`. Terms follow `GLOSSARY.md`; hard-to-reverse choices are i
 49. **Fail closed** (S10) when a tab loses its extension context: the Overlay stays; Turn back works locally; Bypass reads "Reload to bypass".
 50. **ADR-0004** records the single-writer store with read-only readers.
 
+## Motion round 2–3
+
+51. **Bypass-wait gesture: Metronome** (M1, user's pick over the recommended Measure). The wait is always N countable beats; "Bypass in N" stays visible and true.
+52. **Genre stages (exploring, prototype round 3):** each arrival *performs* the same metronome measure in a musical style — Baroque, Romantic, Impressionist, Jazz, Minimalist — as a "three.js-style" generative stage, carrying only the four musical events and going still after the release. The rotating repertoire (29) becomes a repertoire of genres. Implementation path (raw WebGL shader vs. lazily loaded three.js, which would amend ADR-0003) is decided after the prototype.
+
 ## Still open (answered by later skills, not grilling)
 
 - Visual direction for each surface → `/prototype` (UI branch), both themes.
