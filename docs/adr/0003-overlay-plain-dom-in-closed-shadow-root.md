@@ -1,0 +1,3 @@
+# The overlay is plain DOM in a closed shadow root; only the extension pages use React
+
+The overlay runs on every page of the web, must appear before the page paints, and must survive hostile site CSS and scripts (1.x was broken by `html{font-size}` rules and by sites re-rendering `<body>`). It is therefore built with plain DOM APIs inside a closed shadow root, sized in `px`, with no framework runtime in the content script. The popup, settings and first-run pages are ordinary extension pages and use React and Tailwind. A shared component library across both was considered and rejected: it would put React on every page load for a single, small surface.

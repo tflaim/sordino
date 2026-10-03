@@ -29,7 +29,7 @@ A time window on chosen days during which muted sites are muted.
 _Avoid_: rule, timer, focus session
 
 **Mute now**:
-User-started muting outside any schedule; it always ends at a boundary and never persists indefinitely.
+User-started muting outside any schedule, for a duration the user chooses when starting it; it never persists indefinitely.
 _Avoid_: manual override, start blocking, manual mode
 
 **Pause**:
@@ -50,6 +50,24 @@ _Avoid_: go back (as a noun), give up, success
 A timed pass through the overlay for one muted site.
 _Avoid_: unblock, skip, cheat, override
 
+**Bypass wait**:
+The short, visible countdown before a bypass can be taken; longer once the bypass budget is spent.
+_Avoid_: delay, cooldown, penalty, timeout
+
 **Bypass budget**:
 The number of bypasses available per day; when it is spent, bypassing remains possible but asks for more friction.
 _Avoid_: quick bypasses, allowance, lives
+
+### Usage
+
+**Usage**:
+The user's own record of muting activity, kept as raw daily counts on this device and shown as a mirror, not a score.
+_Avoid_: stats, analytics, insights, score, progress
+
+**Mute count**:
+The number of times the user navigated to a muted site while muting was in effect, once per navigation.
+_Avoid_: blocks, distractions caught, attempts
+
+**First run**:
+The welcome moment after install where the user reviews the defaults and chooses to start; nothing is muted before it.
+_Avoid_: onboarding, setup wizard, tutorial

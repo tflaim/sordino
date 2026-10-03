@@ -1,0 +1,3 @@
+# A spent bypass budget adds friction; it never removes the bypass
+
+Every other blocker treats an exhausted allowance as a hard stop, and Sordino 1.x did too (the Bypass button disabled at zero). That contradicted PRODUCT.md Principle 1 ("if the user cannot choose to bypass, we have built the wrong product"). From 2.0, once the daily bypass budget is spent a bypass is still available after a fixed, longer bypass wait (30s), and is still counted honestly in Usage. We rejected escalating waits (reads as punishment) and typed challenges (the gate PRODUCT.md rejects); "emergency refresh" is retired. Do not "fix" this into a hard stop.
