@@ -1,6 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:wght@400;500;600&display=swap');
-
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme {
   --color-background: hsl(24 10% 10%);
@@ -28,9 +26,13 @@
      still reading as state codes. These replace cool Tailwind defaults
      (green-500, yellow-500, orange-500) at the popup status pill, the
      settings header status rail, and any future state-bound surface. */
-  --color-success: hsl(110 32% 50%);     /* sage-warm green for Active (warmer than green-500's hue 145) */
-  --color-warning: hsl(50 75% 55%);      /* mustard for Paused — shifted off hue 38 to keep clear of brand brass */
-  --color-info: hsl(22 70% 58%);         /* terra-orange for Bypass */
+  --color-success: hsl(
+    110 32% 50%
+  ); /* sage-warm green for Active (warmer than green-500's hue 145) */
+  --color-warning: hsl(
+    50 75% 55%
+  ); /* mustard for Paused — shifted off hue 38 to keep clear of brand brass */
+  --color-info: hsl(22 70% 58%); /* terra-orange for Bypass */
 
   --color-border: hsl(30 20% 25%);
   --color-input: hsl(30 20% 25%);
@@ -49,10 +51,19 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family:
+      'DM Sans',
+      -apple-system,
+      BlinkMacSystemFont,
+      sans-serif;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: 'Cormorant Garamond', Georgia, serif;
   }
 }

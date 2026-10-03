@@ -11,7 +11,7 @@ export interface Schedule {
   enabled: boolean
   days: DayOfWeek[]
   startTime: string // "09:00" (24h format)
-  endTime: string   // "17:00"
+  endTime: string // "17:00"
 }
 
 export interface Category {
@@ -68,14 +68,14 @@ export interface SordinoSettings {
   schedules: Schedule[]
   categories: Category[]
   customSites: string[]
-  maxBypasses: number           // default 3, range 1-10
+  maxBypasses: number // default 3, range 1-10
   bypassDurationMinutes: number // default 5, range 1-30
   blockState: BlockState
   bypassState: BypassState
   stats: Stats
   weeklyStats: WeeklyStats
-  onboardingDismissed: boolean  // true once the user dismisses the first-run popup card
-  scaffoldingMode: boolean      // when true, bypass requires a second-click confirm (opt-in friction for users who want it)
+  onboardingDismissed: boolean // true once the user dismisses the first-run popup card
+  scaffoldingMode: boolean // when true, bypass requires a second-click confirm (opt-in friction for users who want it)
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [
@@ -111,13 +111,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
     id: 'news',
     name: 'News',
     enabled: false,
-    sites: [
-      'news.google.com',
-      'cnn.com',
-      'foxnews.com',
-      'nytimes.com',
-      'bbc.com',
-    ],
+    sites: ['news.google.com', 'cnn.com', 'foxnews.com', 'nytimes.com', 'bbc.com'],
   },
 ]
 

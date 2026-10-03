@@ -1,0 +1,9 @@
+package-lock.json
+skills-lock.json
+.output/
+.wxt/
+docs/
+sordino-qe-screenshots/
+.agents/
+.claude/
+*.md

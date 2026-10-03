@@ -7,7 +7,7 @@
 //   (b) no page errors / console errors (e.g. the content script failing to
 //       parse with "Cannot use import statement outside a module").
 //
-// Usage: node tests/e2e/overlay.smoke.mjs [distDir]   (default: dist/chrome)
+// Usage: node tests/e2e/overlay.smoke.mjs [distDir]   (default: .output/chrome-mv3)
 // Env:   CHROMIUM_PATH  optional Chromium binary (must be full Chromium, not
 //                       headless-shell, which cannot load extensions)
 //        HEADED=1       run headed
@@ -17,7 +17,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-const DIST = resolve(process.argv[2] ?? 'dist/chrome')
+const DIST = resolve(process.argv[2] ?? '.output/chrome-mv3')
 const HOST = 'www.reddit.com' // in DEFAULT_CATEGORIES (social), so blocked when blocking is on
 const OVERLAY = '#sordino-overlay'
 const OVERLAY_TIMEOUT_MS = 5000
@@ -53,9 +53,10 @@ const ctx = await chromium.launchPersistentContext(userDataDir, {
   ],
 })
 
-let exitCode = 1
+let exitCode
 try {
-  const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker', { timeout: 10000 }))
+  const sw =
+    ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker', { timeout: 10000 }))
 
   // Force blocking on. Wait for the extension APIs to be bound in the worker
   // (they appear shortly after it starts) and for onInstalled to have written
@@ -95,9 +96,10 @@ try {
 
   // Fail fast on the first error; otherwise wait for the overlay.
   const overlay = await Promise.race([
-    page
-      .waitForSelector(OVERLAY, { state: 'attached', timeout: OVERLAY_TIMEOUT_MS })
-      .then(() => true, () => false),
+    page.waitForSelector(OVERLAY, { state: 'attached', timeout: OVERLAY_TIMEOUT_MS }).then(
+      () => true,
+      () => false
+    ),
     firstError.then(() => false),
   ])
   await page.waitForTimeout(SETTLE_MS) // catch late errors

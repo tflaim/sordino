@@ -1,7 +1,8 @@
-import { getSettings, updateSettings } from '../shared/storage'
-import { shouldBlock, getActiveSchedule, formatEndTime } from '../shared/schedule'
-import type { SordinoSettings, MessageType } from '../shared/types'
-import { getLocalDateString, MAX_QUICK_BYPASSES, BYPASS_DURATION_MS } from '../shared/types'
+import { defineBackground } from 'wxt/utils/define-background'
+import { getSettings, updateSettings } from '@/shared/storage'
+import { shouldBlock, getActiveSchedule, formatEndTime } from '@/shared/schedule'
+import type { SordinoSettings, MessageType } from '@/shared/types'
+import { getLocalDateString, MAX_QUICK_BYPASSES } from '@/shared/types'
 
 // Broadcast settings update to all tabs so content scripts can react immediately
 async function broadcastSettingsUpdate(): Promise<void> {
@@ -189,8 +190,12 @@ async function checkBypassReset(): Promise<SordinoSettings> {
       // Add previous day to weekly stats (if it had any activity)
       if (prevStats.blocksTriggered > 0 || prevStats.bypassesUsed > 0) {
         weeklyStats.days = [
-          ...weeklyStats.days.filter(d => d.date !== prevStats.date),
-          { date: prevStats.date, blocksTriggered: prevStats.blocksTriggered, bypassesUsed: prevStats.bypassesUsed }
+          ...weeklyStats.days.filter((d) => d.date !== prevStats.date),
+          {
+            date: prevStats.date,
+            blocksTriggered: prevStats.blocksTriggered,
+            bypassesUsed: prevStats.bypassesUsed,
+          },
         ].slice(-7) // Keep only last 7 days
       }
 
@@ -256,12 +261,6 @@ function getBlockKey(url: string): string {
   return getSiteFromUrl(url)
 }
 
-// Handle messages from content script and popup
-chrome.runtime.onMessage.addListener((message: MessageType, _sender, sendResponse) => {
-  handleMessage(message).then(sendResponse)
-  return true // Keep channel open for async response
-})
-
 async function handleMessage(message: MessageType): Promise<unknown> {
   const settings = await checkBypassReset()
 
@@ -300,7 +299,9 @@ async function handleMessage(message: MessageType): Promise<unknown> {
           ...s,
           stats: {
             ...s.stats,
-            blocksTriggered: isFirstBlockForSite ? s.stats.blocksTriggered + 1 : s.stats.blocksTriggered,
+            blocksTriggered: isFirstBlockForSite
+              ? s.stats.blocksTriggered + 1
+              : s.stats.blocksTriggered,
             siteStats,
           },
         }
@@ -310,10 +311,9 @@ async function handleMessage(message: MessageType): Promise<unknown> {
       return {
         isBlocked: true,
         reason: blockStatus.reason,
-        timeRemaining: activeSchedule
-          ? `until ${formatEndTime(activeSchedule)}`
-          : undefined,
-        bypassesRemaining: (settings.maxBypasses ?? MAX_QUICK_BYPASSES) - settings.bypassState.quickBypassesUsed,
+        timeRemaining: activeSchedule ? `until ${formatEndTime(activeSchedule)}` : undefined,
+        bypassesRemaining:
+          (settings.maxBypasses ?? MAX_QUICK_BYPASSES) - settings.bypassState.quickBypassesUsed,
         bypassDuration: settings.bypassDurationMinutes ?? 5,
         scaffoldingMode: settings.scaffoldingMode ?? false,
       }
@@ -446,16 +446,57 @@ async function handleMessage(message: MessageType): Promise<unknown> {
   }
 }
 
-// Set up alarm to check schedule every minute
-chrome.alarms.create('checkSchedule', { periodInMinutes: 1 })
+export default defineBackground(() => {
+  // Handle messages from content script and popup
+  chrome.runtime.onMessage.addListener((message: MessageType, _sender, sendResponse) => {
+    handleMessage(message).then(sendResponse)
+    return true // Keep channel open for async response
+  })
 
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  try {
-    if (alarm.name === 'checkSchedule') {
+  // Set up alarm to check schedule every minute
+  chrome.alarms.create('checkSchedule', { periodInMinutes: 1 })
+
+  chrome.alarms.onAlarm.addListener(async (alarm) => {
+    try {
+      if (alarm.name === 'checkSchedule') {
+        const settings = await checkBypassReset()
+        const blockStatus = shouldBlock(settings)
+
+        // Update block state and badge
+        const updated = await updateSettings((s) => ({
+          ...s,
+          blockState: {
+            ...s.blockState,
+            isBlocking: blockStatus.shouldBlock,
+            activeSchedule: blockStatus.reason ?? null,
+          },
+        }))
+        await updateBadge(getBadgeState(updated))
+
+        // Clear expired bypasses
+        if (settings.bypassState.activeBypass) {
+          if (Date.now() > settings.bypassState.activeBypass.expiresAt) {
+            await updateSettings((s) => ({
+              ...s,
+              bypassState: {
+                ...s.bypassState,
+                activeBypass: null,
+              },
+            }))
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Sordino: Error in alarm handler', error)
+    }
+  })
+
+  // Initialize on install
+  chrome.runtime.onInstalled.addListener(async () => {
+    try {
       const settings = await checkBypassReset()
       const blockStatus = shouldBlock(settings)
 
-      // Update block state and badge
       const updated = await updateSettings((s) => ({
         ...s,
         blockState: {
@@ -465,53 +506,20 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         },
       }))
       await updateBadge(getBadgeState(updated))
-
-      // Clear expired bypasses
-      if (settings.bypassState.activeBypass) {
-        if (Date.now() > settings.bypassState.activeBypass.expiresAt) {
-          await updateSettings((s) => ({
-            ...s,
-            bypassState: {
-              ...s.bypassState,
-              activeBypass: null,
-            },
-          }))
-        }
-      }
+    } catch (error) {
+      console.error('Sordino: Error in onInstalled handler', error)
     }
-  } catch (error) {
-    console.error('Sordino: Error in alarm handler', error)
-  }
+  })
+
+  // Initialize badge on service worker start (handles browser restart)
+  ;(async () => {
+    try {
+      const settings = await getSettings()
+      await updateBadge(getBadgeState(settings))
+    } catch (error) {
+      console.error('Sordino: Error initializing badge', error)
+    }
+  })()
+
+  console.log('Sordino background service worker initialized')
 })
-
-// Initialize on install
-chrome.runtime.onInstalled.addListener(async () => {
-  try {
-    const settings = await checkBypassReset()
-    const blockStatus = shouldBlock(settings)
-
-    const updated = await updateSettings((s) => ({
-      ...s,
-      blockState: {
-        ...s.blockState,
-        isBlocking: blockStatus.shouldBlock,
-        activeSchedule: blockStatus.reason ?? null,
-      },
-    }))
-    await updateBadge(getBadgeState(updated))
-  } catch (error) {
-    console.error('Sordino: Error in onInstalled handler', error)
-  }
-})
-
-// Initialize badge on service worker start (handles browser restart)
-;(async () => {
-  try {
-    const settings = await getSettings()
-    await updateBadge(getBadgeState(settings))
-  } catch (error) {
-    console.error('Sordino: Error initializing badge', error)
-  }
-})()
-
-console.log('Sordino background service worker initialized')

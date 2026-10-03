@@ -1,14 +1,16 @@
-import { FOCUS_QUOTES } from '../shared/quotes'
-import { getRandomSnarkyTitle } from '../shared/snarky-titles'
-import { CONFIRM_RESET_MS } from '../shared/types'
+import { defineContentScript } from 'wxt/utils/define-content-script'
+import logoUrl from '@/assets/logo.png?inline'
+import { FOCUS_QUOTES } from '@/shared/quotes'
+import { getRandomSnarkyTitle } from '@/shared/snarky-titles'
+import { CONFIRM_RESET_MS } from '@/shared/types'
 
 interface BlockStatus {
   isBlocked: boolean
   reason?: string
   timeRemaining?: string
   bypassesRemaining?: number
-  bypassDuration?: number  // minutes
-  scaffoldingMode?: boolean  // when true, bypass button requires a second-click confirm
+  bypassDuration?: number // minutes
+  scaffoldingMode?: boolean // when true, bypass button requires a second-click confirm
 }
 
 let overlayElement: HTMLElement | null = null
@@ -16,8 +18,8 @@ let isChecking = false
 let bypassCountdownInterval: number | null = null
 let quoteRotationInterval: number | null = null
 let currentQuoteIndex: number = -1
-let shownBypassNotifications = new Set<number>() // Track which bypass time thresholds we've shown
-let shownPauseNotifications = new Set<number>() // Track which pause time thresholds we've shown
+const shownBypassNotifications = new Set<number>() // Track which bypass time thresholds we've shown
+const shownPauseNotifications = new Set<number>() // Track which pause time thresholds we've shown
 
 // Defense-in-depth text sanitizer. While we use textContent for output (which auto-escapes),
 // this provides an extra safety layer in case code changes later to use innerHTML.
@@ -52,17 +54,14 @@ async function checkBlockStatus(): Promise<BlockStatus> {
 async function useBypass(): Promise<{ success: boolean; remaining: number }> {
   return new Promise((resolve) => {
     try {
-      chrome.runtime.sendMessage(
-        { type: 'USE_BYPASS', site: window.location.href },
-        (response) => {
-          if (chrome.runtime.lastError) {
-            console.warn('Sordino: Extension context error', chrome.runtime.lastError.message)
-            resolve({ success: false, remaining: 0 })
-            return
-          }
-          resolve(response || { success: false, remaining: 0 })
+      chrome.runtime.sendMessage({ type: 'USE_BYPASS', site: window.location.href }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.warn('Sordino: Extension context error', chrome.runtime.lastError.message)
+          resolve({ success: false, remaining: 0 })
+          return
         }
-      )
+        resolve(response || { success: false, remaining: 0 })
+      })
     } catch (error) {
       console.warn('Sordino: Failed to use bypass', error)
       resolve({ success: false, remaining: 0 })
@@ -100,7 +99,7 @@ function rotateQuote(): void {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   if (reducedMotion) {
     currentQuoteIndex = getNextQuoteIndex()
-    const newQuote = FOCUS_QUOTES[currentQuoteIndex]
+    const newQuote = FOCUS_QUOTES[currentQuoteIndex]!
     textEl.textContent = `"${ensureTextOnly(newQuote.text)}"`
     authorEl.textContent = `— ${ensureTextOnly(newQuote.author)}`
     return
@@ -116,7 +115,7 @@ function rotateQuote(): void {
     if (!document.getElementById('sordino-quote-container')) return
 
     currentQuoteIndex = getNextQuoteIndex()
-    const newQuote = FOCUS_QUOTES[currentQuoteIndex]
+    const newQuote = FOCUS_QUOTES[currentQuoteIndex]!
     textEl.textContent = `"${ensureTextOnly(newQuote.text)}"`
     authorEl.textContent = `— ${ensureTextOnly(newQuote.author)}`
 
@@ -135,7 +134,7 @@ function rotateQuote(): void {
 function createOverlay(status: BlockStatus): HTMLElement {
   // Get initial quote and track its index
   currentQuoteIndex = getNextQuoteIndex()
-  const quote = FOCUS_QUOTES[currentQuoteIndex]
+  const quote = FOCUS_QUOTES[currentQuoteIndex]!
   const site = getSiteFromUrl()
 
   const overlay = document.createElement('div')
@@ -154,7 +153,7 @@ function createOverlay(status: BlockStatus): HTMLElement {
   logo.className = 'sordino-logo'
 
   const iconImg = document.createElement('img')
-  iconImg.src = chrome.runtime.getURL('icons/logo.png')
+  iconImg.src = logoUrl
   iconImg.alt = 'Sordino'
   iconImg.className = 'sordino-icon'
   logo.appendChild(iconImg)
@@ -660,7 +659,11 @@ function removeOverlay(): void {
 // Toast notification for countdown (bypass or pause)
 type ToastTheme = 'bypass' | 'pause'
 
-function showCountdownToast(message: string, urgent: boolean = false, theme: ToastTheme = 'bypass'): void {
+function showCountdownToast(
+  message: string,
+  urgent: boolean = false,
+  theme: ToastTheme = 'bypass'
+): void {
   // Remove existing toast
   const existing = document.getElementById('sordino-toast')
   if (existing) existing.remove()
@@ -674,15 +677,15 @@ function showCountdownToast(message: string, urgent: boolean = false, theme: Toa
   // every channel so the escalation is visible at a glance.
   const colors = {
     bypass: {
-      normal: 'rgba(56, 46, 38, 0.94)',   // walnut shadow
-      urgent: 'rgba(118, 70, 40, 0.96)',  // warm amber — urgent but still in-palette
-      icon: '⏱'
+      normal: 'rgba(56, 46, 38, 0.94)', // walnut shadow
+      urgent: 'rgba(118, 70, 40, 0.96)', // warm amber — urgent but still in-palette
+      icon: '⏱',
     },
     pause: {
-      normal: 'rgba(56, 46, 38, 0.94)',   // walnut shadow
-      urgent: 'rgba(118, 70, 40, 0.96)',  // warm amber — urgent but still in-palette
-      icon: '▶'
-    }
+      normal: 'rgba(56, 46, 38, 0.94)', // walnut shadow
+      urgent: 'rgba(118, 70, 40, 0.96)', // warm amber — urgent but still in-palette
+      icon: '▶',
+    },
   }
 
   const colorScheme = colors[theme]
@@ -753,7 +756,11 @@ function showCountdownToast(message: string, urgent: boolean = false, theme: Toa
       toast.remove()
     } else {
       // setProperty is required for !important — inline `style.animation = '... !important'` is silently dropped by CSSOM
-      toast.style.setProperty('animation', 'sordino-toast-out 0.5s ease-in-out forwards', 'important')
+      toast.style.setProperty(
+        'animation',
+        'sordino-toast-out 0.5s ease-in-out forwards',
+        'important'
+      )
       setTimeout(() => toast.remove(), 500)
     }
   }, dismissAfter)
@@ -779,7 +786,7 @@ async function checkCountdowns(): Promise<void> {
       { ms: 60000, label: '1 minute', urgent: false },
       { ms: 30000, label: '30 seconds', urgent: false },
       { ms: 10000, label: '10 seconds', urgent: true },
-      { ms: 5000, label: '5 seconds', urgent: true }
+      { ms: 5000, label: '5 seconds', urgent: true },
     ]
 
     // Check bypass countdown
@@ -792,7 +799,11 @@ async function checkCountdowns(): Promise<void> {
         const remaining = bypass.expiresAt - Date.now()
 
         for (const threshold of THRESHOLDS) {
-          if (remaining <= threshold.ms && remaining > threshold.ms - 5000 && !shownBypassNotifications.has(threshold.ms)) {
+          if (
+            remaining <= threshold.ms &&
+            remaining > threshold.ms - 5000 &&
+            !shownBypassNotifications.has(threshold.ms)
+          ) {
             shownBypassNotifications.add(threshold.ms)
             showCountdownToast(`Bypass ending: ${threshold.label}`, threshold.urgent, 'bypass')
           }
@@ -812,7 +823,11 @@ async function checkCountdowns(): Promise<void> {
       const remaining = pausedUntil - Date.now()
 
       for (const threshold of THRESHOLDS) {
-        if (remaining <= threshold.ms && remaining > threshold.ms - 5000 && !shownPauseNotifications.has(threshold.ms)) {
+        if (
+          remaining <= threshold.ms &&
+          remaining > threshold.ms - 5000 &&
+          !shownPauseNotifications.has(threshold.ms)
+        ) {
           shownPauseNotifications.add(threshold.ms)
           showCountdownToast(`Blocking resumes: ${threshold.label}`, threshold.urgent, 'pause')
         }
@@ -881,9 +896,15 @@ function init() {
   })
 }
 
-// Content script runs at document_start, so DOM might not be ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init, { once: true })
-} else {
-  init()
-}
+export default defineContentScript({
+  matches: ['<all_urls>'],
+  runAt: 'document_start',
+  main() {
+    // Content script runs at document_start, so DOM might not be ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init, { once: true })
+    } else {
+      init()
+    }
+  },
+})

@@ -1,4 +1,4 @@
-import { Schedule, DayOfWeek, SordinoSettings } from './types'
+import type { Schedule, DayOfWeek, SordinoSettings } from './types'
 
 const DAY_MAP: Record<number, DayOfWeek> = {
   0: 'sun',
@@ -11,7 +11,7 @@ const DAY_MAP: Record<number, DayOfWeek> = {
 }
 
 function parseTime(timeStr: string): { hours: number; minutes: number } {
-  const [hours, minutes] = timeStr.split(':').map(Number)
+  const [hours, minutes] = timeStr.split(':').map(Number) as [number, number]
   return { hours, minutes }
 }
 
@@ -39,7 +39,7 @@ function isTimeInRange(
 export function isScheduleActive(schedule: Schedule, now: Date = new Date()): boolean {
   if (!schedule.enabled) return false
 
-  const currentDay = DAY_MAP[now.getDay()]
+  const currentDay = DAY_MAP[now.getDay()]!
   const currentHours = now.getHours()
   const currentMinutes = now.getMinutes()
 
@@ -65,7 +65,7 @@ export function isScheduleActive(schedule: Schedule, now: Date = new Date()): bo
       // Morning portion - check if yesterday is in schedule
       const yesterday = new Date(now)
       yesterday.setDate(yesterday.getDate() - 1)
-      const yesterdayDay = DAY_MAP[yesterday.getDay()]
+      const yesterdayDay = DAY_MAP[yesterday.getDay()]!
       if (!schedule.days.includes(yesterdayDay)) return false
       return true
     }
@@ -116,7 +116,10 @@ export function formatEndTime(schedule: Schedule): string {
   return `${hour}:${mins} ${ampm}`
 }
 
-export function shouldBlock(settings: SordinoSettings, now: Date = new Date()): {
+export function shouldBlock(
+  settings: SordinoSettings,
+  now: Date = new Date()
+): {
   shouldBlock: boolean
   reason?: string
   timeRemaining?: string

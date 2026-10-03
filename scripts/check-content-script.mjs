@@ -6,13 +6,13 @@
 // before any code runs, and the overlay never appears.
 //
 // Usage: node scripts/check-content-script.mjs [distDir ...]
-//        (defaults to dist/chrome dist/firefox)
+//        (defaults to .output/chrome-mv3 .output/firefox-mv3)
 import { readFileSync, existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import vm from 'node:vm'
 
 const distDirs = process.argv.slice(2)
-if (distDirs.length === 0) distDirs.push('dist/chrome', 'dist/firefox')
+if (distDirs.length === 0) distDirs.push('.output/chrome-mv3', '.output/firefox-mv3')
 
 let failures = 0
 let checked = 0

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { getSettings, updateSettings, subscribeToSettings } from '../shared/storage'
-import { shouldBlock, getActiveSchedule, formatEndTime } from '../shared/schedule'
-import type { SordinoSettings } from '../shared/types'
-import { MAX_QUICK_BYPASSES } from '../shared/types'
-import { cn } from '../shared/utils'
+import { getSettings, updateSettings, subscribeToSettings } from '@/shared/storage'
+import { shouldBlock, getActiveSchedule, formatEndTime } from '@/shared/schedule'
+import type { SordinoSettings } from '@/shared/types'
+import { MAX_QUICK_BYPASSES } from '@/shared/types'
+import { cn } from '@/shared/utils'
 import { Settings, Plus, Pause, Play, Clock, Timer, X, Check } from 'lucide-react'
+import logoUrl from '@/assets/logo.png'
 
 type BlockingStatus = 'active' | 'paused' | 'inactive' | 'bypass'
 
@@ -34,6 +35,7 @@ function App() {
   // Countdown timer for active bypass
   useEffect(() => {
     if (!settings?.bypassState.activeBypass) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 1.x surface, rebuilt in 2.0
       setBypassTimeLeft(null)
       return
     }
@@ -58,6 +60,7 @@ function App() {
 
   const blockStatus = shouldBlock(settings)
   const activeSchedule = getActiveSchedule(settings.schedules)
+  // eslint-disable-next-line react-hooks/purity -- 1.x surface, rebuilt in 2.0
   const isPaused = settings.blockState.pausedUntil && Date.now() < settings.blockState.pausedUntil
   const hasBypass = bypassTimeLeft !== null && settings.bypassState.activeBypass
 
@@ -117,7 +120,7 @@ function App() {
   }
 
   const openSettings = () => {
-    chrome.tabs.create({ url: chrome.runtime.getURL('settings.html') })
+    chrome.runtime.openOptionsPage()
   }
 
   const dismissOnboarding = async () => {
@@ -132,7 +135,7 @@ function App() {
       {/* Header */}
       <div className="relative px-4 pt-4 pb-3 flex items-center justify-between border-b border-border/50">
         <div className="flex items-center gap-2">
-          <img src="icons/logo.png" alt="Sordino" className="w-6 h-6" />
+          <img src={logoUrl} alt="Sordino" className="w-6 h-6" />
           <h1 className="font-serif text-lg font-medium tracking-wide text-primary">Sordino</h1>
         </div>
         <button
@@ -155,9 +158,13 @@ function App() {
               <X className="w-3.5 h-3.5" />
             </button>
             <p className="text-sm leading-relaxed text-foreground">
-              Sordino softens distracting sites on your schedule. {maxBypasses} quick bypasses are built in each day, reset at midnight. Schedules live in{' '}
+              Sordino softens distracting sites on your schedule. {maxBypasses} quick bypasses are
+              built in each day, reset at midnight. Schedules live in{' '}
               <button
-                onClick={async () => { await dismissOnboarding(); openSettings() }}
+                onClick={async () => {
+                  await dismissOnboarding()
+                  openSettings()
+                }}
                 className="underline underline-offset-2 decoration-primary/40 hover:decoration-primary/70 hover:text-primary transition-colors"
               >
                 Settings
@@ -178,47 +185,59 @@ function App() {
 
       {/* Status Card */}
       <div className="p-4">
-        <div className={cn(
-          "relative rounded-xl p-5 transition-colors duration-200",
-          status === 'active' && "bg-primary/15",
-          status === 'bypass' && "bg-info/15",
-          status === 'paused' && "bg-warning/15",
-          status === 'inactive' && "bg-secondary/50"
-        )}>
+        <div
+          className={cn(
+            'relative rounded-xl p-5 transition-colors duration-200',
+            status === 'active' && 'bg-primary/15',
+            status === 'bypass' && 'bg-info/15',
+            status === 'paused' && 'bg-warning/15',
+            status === 'inactive' && 'bg-secondary/50'
+          )}
+        >
           <div className="relative">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 {status === 'bypass' ? (
                   <Timer className="w-4 h-4 text-info" />
                 ) : (
-                  <div className={cn(
-                    "w-2.5 h-2.5 rounded-full",
-                    status === 'active' && "bg-success motion-safe:animate-[pulse_1.5s_ease-in-out_infinite]",
-                    status === 'paused' && "bg-warning",
-                    status === 'inactive' && "bg-muted-foreground/50"
-                  )} />
+                  <div
+                    className={cn(
+                      'w-2.5 h-2.5 rounded-full',
+                      status === 'active' &&
+                        'bg-success motion-safe:animate-[pulse_1.5s_ease-in-out_infinite]',
+                      status === 'paused' && 'bg-warning',
+                      status === 'inactive' && 'bg-muted-foreground/50'
+                    )}
+                  />
                 )}
-                <span className={cn(
-                  "text-sm font-medium uppercase tracking-wider transition-colors duration-200",
-                  status === 'active' && "text-primary",
-                  status === 'bypass' && "text-info",
-                  status === 'paused' && "text-warning",
-                  status === 'inactive' && "text-muted-foreground"
-                )}>
+                <span
+                  className={cn(
+                    'text-sm font-medium uppercase tracking-wider transition-colors duration-200',
+                    status === 'active' && 'text-primary',
+                    status === 'bypass' && 'text-info',
+                    status === 'paused' && 'text-warning',
+                    status === 'inactive' && 'text-muted-foreground'
+                  )}
+                >
                   {statusText}
                 </span>
               </div>
             </div>
 
-            <p className={cn("text-sm text-muted-foreground", status !== 'active' ? "mb-4" : "")}>{statusSubtext}</p>
+            <p className={cn('text-sm text-muted-foreground', status !== 'active' ? 'mb-4' : '')}>
+              {statusSubtext}
+            </p>
             {status === 'active' && (
               <p className="text-xs text-muted-foreground/70 mb-4">
                 {(() => {
-                  const enabledSiteCount = settings.categories
-                    .filter(c => c.enabled)
-                    .reduce((sum, c) => sum + c.sites.length - (c.disabledSites?.length ?? 0), 0)
-                    + settings.customSites.length
-                  const enabledCategoryCount = settings.categories.filter(c => c.enabled).length
+                  const enabledSiteCount =
+                    settings.categories
+                      .filter((c) => c.enabled)
+                      .reduce(
+                        (sum, c) => sum + c.sites.length - (c.disabledSites?.length ?? 0),
+                        0
+                      ) + settings.customSites.length
+                  const enabledCategoryCount = settings.categories.filter((c) => c.enabled).length
                   return `${enabledSiteCount} sites across ${enabledCategoryCount} ${enabledCategoryCount === 1 ? 'category' : 'categories'}`
                 })()}
               </p>
@@ -239,20 +258,31 @@ function App() {
                   {/* Pause dropdown */}
                   {showPauseMenu && (
                     <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-xl z-10 overflow-hidden">
-                      <button onClick={() => handlePause(15 * 60 * 1000)} className="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary/50 transition-colors flex items-center gap-2">
+                      <button
+                        onClick={() => handlePause(15 * 60 * 1000)}
+                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary/50 transition-colors flex items-center gap-2"
+                      >
                         <Clock className="w-3.5 h-3.5 text-muted-foreground" />
                         15 minutes
                       </button>
-                      <button onClick={() => handlePause(60 * 60 * 1000)} className="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary/50 transition-colors flex items-center gap-2">
-                        <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                        1 hour
+                      <button
+                        onClick={() => handlePause(60 * 60 * 1000)}
+                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary/50 transition-colors flex items-center gap-2"
+                      >
+                        <Clock className="w-3.5 h-3.5 text-muted-foreground" />1 hour
                       </button>
-                      <button onClick={() => handlePause(getMillisecondsUntilTomorrow())} className="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary/50 transition-colors flex items-center gap-2">
+                      <button
+                        onClick={() => handlePause(getMillisecondsUntilTomorrow())}
+                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary/50 transition-colors flex items-center gap-2"
+                      >
                         <Clock className="w-3.5 h-3.5 text-muted-foreground" />
                         Until tomorrow
                       </button>
                       <div className="border-t border-border" />
-                      <button onClick={() => handlePause(null)} className="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary/50 transition-colors text-muted-foreground">
+                      <button
+                        onClick={() => handlePause(null)}
+                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary/50 transition-colors text-muted-foreground"
+                      >
                         Until I turn it back on
                       </button>
                     </div>
@@ -286,7 +316,9 @@ function App() {
 
       {/* Stats */}
       <div className="px-4 pb-4">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">Today</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+          Today
+        </p>
         <div className="grid grid-cols-3 gap-3">
           <StatCard
             value={settings.stats.blocksTriggered}
@@ -316,7 +348,13 @@ function App() {
   )
 }
 
-function StatCard({ value, singular, plural, highlight, subtext }: {
+function StatCard({
+  value,
+  singular,
+  plural,
+  highlight,
+  subtext,
+}: {
   value: number | string
   singular: string
   plural: string
@@ -326,20 +364,22 @@ function StatCard({ value, singular, plural, highlight, subtext }: {
   const numValue = typeof value === 'number' ? value : parseInt(value)
   const label = numValue === 1 ? singular : plural
   return (
-    <div className={cn(
-      "rounded-2xl p-3 text-center",
-      highlight ? "bg-destructive/10" : "bg-secondary/50"
-    )}>
-      <p className={cn(
-        "text-xl font-semibold font-serif",
-        highlight ? "text-destructive" : "text-foreground"
-      )}>
+    <div
+      className={cn(
+        'rounded-2xl p-3 text-center',
+        highlight ? 'bg-destructive/10' : 'bg-secondary/50'
+      )}
+    >
+      <p
+        className={cn(
+          'text-xl font-semibold font-serif',
+          highlight ? 'text-destructive' : 'text-foreground'
+        )}
+      >
         {value}
       </p>
       <p className="text-xs text-muted-foreground">{label}</p>
-      {subtext && (
-        <p className="text-[10px] text-muted-foreground/70 mt-1">{subtext}</p>
-      )}
+      {subtext && <p className="text-[10px] text-muted-foreground/70 mt-1">{subtext}</p>}
     </div>
   )
 }
@@ -351,7 +391,11 @@ function QuickAddSite() {
   const handleAdd = async () => {
     if (!site.trim()) return
 
-    const cleanSite = site.trim().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
+    const cleanSite = site
+      .trim()
+      .replace(/^https?:\/\//, '')
+      .replace(/^www\./, '')
+      .split('/')[0]!
 
     // Use queued updateSettings to prevent race conditions
     await updateSettings((s) => ({
@@ -372,7 +416,10 @@ function QuickAddSite() {
           onChange={(e) => setSite(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') handleAdd()
-            if (e.key === 'Escape') { setIsOpen(false); setSite('') }
+            if (e.key === 'Escape') {
+              setIsOpen(false)
+              setSite('')
+            }
           }}
           placeholder="example.com"
           className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -387,7 +434,10 @@ function QuickAddSite() {
           <Check className="w-4 h-4" />
         </button>
         <button
-          onClick={() => { setIsOpen(false); setSite('') }}
+          onClick={() => {
+            setIsOpen(false)
+            setSite('')
+          }}
           className="px-3 py-2.5 rounded-xl bg-secondary/50 hover:bg-secondary/70 text-muted-foreground hover:text-foreground transition-colors"
           title="Cancel"
         >
