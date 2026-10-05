@@ -17,6 +17,26 @@ export default tseslint.config(
     extends: [reactHooks.configs.flat.recommended],
   },
   {
+    // Only the background writes storage (ADR-0004): every other context gets
+    // the read-only port from `chrome-storage-reader`.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/entrypoints/background.ts', 'src/store/adapters/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/adapters/chrome-storage'],
+              message:
+                'Only the background store writes storage. Read through chromeStorageReader and send commands.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['**/*.{js,mjs}', '*.config.ts'],
     languageOptions: { globals: globals.node },
   },

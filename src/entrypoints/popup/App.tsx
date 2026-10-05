@@ -1,11 +1,23 @@
 import { useEffect, useState } from 'react'
 import { getSettings, updateSettings, subscribeToSettings } from '@/shared/storage'
-import { shouldBlock, getActiveSchedule, formatEndTime } from '@/shared/schedule'
+import { decideMuting, modeEnd, runningMode, type Length } from '@/shared/muting'
+import { clockTime, statusLine } from '@/shared/status'
 import type { SordinoSettings } from '@/shared/types'
 import { MAX_QUICK_BYPASSES } from '@/shared/types'
+import { useNow, useSordinoState } from '@/shared/use-sordino-state'
 import { cn } from '@/shared/utils'
-import { Settings, Plus, Pause, Play, Clock, Timer, X, Check } from 'lucide-react'
+import { runtimeCommandPort } from '@/store/adapters/runtime'
+import type { Command } from '@/store/commands'
+import { Settings, Plus, Play, Timer, X, Check } from 'lucide-react'
 import logoUrl from '@/assets/logo.png'
+
+const sordino = runtimeCommandPort()
+
+const LENGTH_LABELS: Record<Length, { short: string; long: string }> = {
+  '15m': { short: '15 min', long: '15 minutes' },
+  '1h': { short: '1 hour', long: '1 hour' },
+  'rest-of-today': { short: 'Rest of today', long: 'the rest of today' },
+}
 
 type BlockingStatus = 'active' | 'paused' | 'inactive' | 'bypass'
 
@@ -23,7 +35,9 @@ function formatTimeRemaining(ms: number): string {
 
 function App() {
   const [settings, setSettings] = useState<SordinoSettings | null>(null)
-  const [showPauseMenu, setShowPauseMenu] = useState(false)
+  const state = useSordinoState()
+  const now = useNow()
+  const [problem, setProblem] = useState<string | null>(null)
   const [bypassTimeLeft, setBypassTimeLeft] = useState<number | null>(null)
 
   useEffect(() => {
@@ -50,7 +64,7 @@ function App() {
     return () => clearInterval(interval)
   }, [settings?.bypassState.activeBypass])
 
-  if (!settings) {
+  if (!settings || !state) {
     return (
       <div className="w-[340px] h-[420px] bg-background flex items-center justify-center">
         <div className="motion-safe:animate-pulse text-muted-foreground">Loading...</div>
@@ -58,61 +72,32 @@ function App() {
     )
   }
 
-  const blockStatus = shouldBlock(settings)
-  const activeSchedule = getActiveSchedule(settings.schedules)
-  // eslint-disable-next-line react-hooks/purity -- 1.x surface, rebuilt in 2.0
-  const isPaused = settings.blockState.pausedUntil && Date.now() < settings.blockState.pausedUntil
+  const muting = decideMuting(settings.schedules, state.mode, now)
+  const running = runningMode(state.mode, now)
   const hasBypass = bypassTimeLeft !== null && settings.bypassState.activeBypass
 
-  let status: BlockingStatus = 'inactive'
-  let statusText = 'Blocking inactive'
-  let statusSubtext = 'No schedule active'
+  let status: BlockingStatus = muting.muted
+    ? 'active'
+    : muting.source.kind === 'pause'
+      ? 'paused'
+      : 'inactive'
+  let statusText = statusLine(muting)
+  let statusSubtext = running ? null : 'Following your schedules'
 
-  // Bypass has highest priority - it's a time-sensitive state
+  // A bypass (1.x, until #6) is the most time-sensitive thing to show.
   if (hasBypass) {
     status = 'bypass'
     statusText = 'Bypass active'
     statusSubtext = `${settings.bypassState.activeBypass!.site} • ${formatTimeRemaining(bypassTimeLeft!)} left`
-  } else if (isPaused) {
-    status = 'paused'
-    const pauseEnd = new Date(settings.blockState.pausedUntil!)
-    statusText = 'Paused'
-    statusSubtext = `Until ${pauseEnd.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-  } else if (settings.blockState.manualOverride === 'on') {
-    status = 'active'
-    statusText = 'Blocking active'
-    statusSubtext = 'Manual block enabled'
-  } else if (settings.blockState.manualOverride === 'off') {
-    status = 'inactive'
-    statusText = 'Blocking disabled'
-    statusSubtext = 'Manual override'
-  } else if (blockStatus.shouldBlock && activeSchedule) {
-    status = 'active'
-    statusText = 'Blocking active'
-    statusSubtext = `${activeSchedule.name} • until ${formatEndTime(activeSchedule)}`
   }
 
   const maxBypasses = settings.maxBypasses ?? MAX_QUICK_BYPASSES
   const bypassesRemaining = maxBypasses - settings.bypassState.quickBypassesUsed
 
-  const handleToggle = async () => {
-    const newState = status === 'active' ? 'off' : 'on'
-    await chrome.runtime.sendMessage({ type: 'TOGGLE_MANUAL_OVERRIDE', state: newState })
-  }
-
-  const handlePause = async (duration: number | null) => {
-    if (duration === null) {
-      // Until I turn it back on
-      await chrome.runtime.sendMessage({ type: 'TOGGLE_MANUAL_OVERRIDE', state: 'off' })
-    } else {
-      const until = Date.now() + duration
-      await chrome.runtime.sendMessage({ type: 'PAUSE_BLOCKING', until })
-    }
-    setShowPauseMenu(false)
-  }
-
-  const handleResume = async () => {
-    await chrome.runtime.sendMessage({ type: 'RESUME_BLOCKING' })
+  // The status follows the storage watch; only a command that did not run shows here.
+  const send = async (command: Command) => {
+    const result = await sordino.send(command)
+    setProblem(result.ok ? null : 'Sordino is restarting. Try again in a moment.')
   }
 
   const handleClearBypass = async () => {
@@ -212,7 +197,7 @@ function App() {
                 )}
                 <span
                   className={cn(
-                    'text-sm font-medium uppercase tracking-wider transition-colors duration-200',
+                    'text-sm font-medium transition-colors duration-200',
                     status === 'active' && 'text-primary',
                     status === 'bypass' && 'text-info',
                     status === 'paused' && 'text-warning',
@@ -224,9 +209,11 @@ function App() {
               </div>
             </div>
 
-            <p className={cn('text-sm text-muted-foreground', status !== 'active' ? 'mb-4' : '')}>
-              {statusSubtext}
-            </p>
+            {statusSubtext && (
+              <p className={cn('text-sm text-muted-foreground', status !== 'active' ? 'mb-4' : '')}>
+                {statusSubtext}
+              </p>
+            )}
             {status === 'active' && (
               <p className="text-xs text-muted-foreground/70 mb-4">
                 {(() => {
@@ -243,73 +230,41 @@ function App() {
               </p>
             )}
 
-            {/* Action buttons */}
-            <div className="flex gap-2">
-              {status === 'active' && (
-                <div className="relative flex-1">
-                  <button
-                    onClick={() => setShowPauseMenu(!showPauseMenu)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-colors"
-                  >
-                    <Pause className="w-4 h-4" />
-                    Pause
-                  </button>
+            {status === 'bypass' && (
+              <button
+                onClick={handleClearBypass}
+                className="w-full mb-4 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-info/20 hover:bg-info/30 border border-info/30 text-info text-sm font-medium transition-colors"
+              >
+                <Play className="w-4 h-4" />
+                End bypass
+              </button>
+            )}
 
-                  {/* Pause dropdown */}
-                  {showPauseMenu && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-xl z-10 overflow-hidden">
-                      <button
-                        onClick={() => handlePause(15 * 60 * 1000)}
-                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary/50 transition-colors flex items-center gap-2"
-                      >
-                        <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                        15 minutes
-                      </button>
-                      <button
-                        onClick={() => handlePause(60 * 60 * 1000)}
-                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary/50 transition-colors flex items-center gap-2"
-                      >
-                        <Clock className="w-3.5 h-3.5 text-muted-foreground" />1 hour
-                      </button>
-                      <button
-                        onClick={() => handlePause(getMillisecondsUntilTomorrow())}
-                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary/50 transition-colors flex items-center gap-2"
-                      >
-                        <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                        Until tomorrow
-                      </button>
-                      <div className="border-t border-border" />
-                      <button
-                        onClick={() => handlePause(null)}
-                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary/50 transition-colors text-muted-foreground"
-                      >
-                        Until I turn it back on
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+            {running && (
+              <button
+                onClick={() => send({ type: 'back-to-schedule' })}
+                className="w-full mb-4 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium transition-colors"
+              >
+                <Play className="w-4 h-4" />
+                Back to schedule
+              </button>
+            )}
 
-              {status === 'bypass' && (
-                <button
-                  onClick={handleClearBypass}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-info/20 hover:bg-info/30 border border-info/30 text-info text-sm font-medium transition-colors"
-                >
-                  <Play className="w-4 h-4" />
-                  Resume Blocking
-                </button>
-              )}
-
-              {(status === 'paused' || status === 'inactive') && (
-                <button
-                  onClick={status === 'paused' ? handleResume : handleToggle}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium transition-colors"
-                >
-                  <Play className="w-4 h-4" />
-                  {status === 'paused' ? 'Resume' : 'Start Blocking'}
-                </button>
-              )}
-            </div>
+            <ModeChoices
+              label="Mute now"
+              now={now}
+              onChoose={(length) => send({ type: 'mute-now', length })}
+            />
+            <ModeChoices
+              label="Pause"
+              now={now}
+              onChoose={(length) => send({ type: 'pause', length })}
+            />
+            {problem && (
+              <p role="status" className="mt-3 text-xs text-muted-foreground">
+                {problem}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -458,12 +413,39 @@ function QuickAddSite() {
   )
 }
 
-function getMillisecondsUntilTomorrow(): number {
-  const now = new Date()
-  const tomorrow = new Date(now)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  tomorrow.setHours(0, 0, 0, 0)
-  return tomorrow.getTime() - now.getTime()
+// One row per mode: each length with the end time it would have if chosen now.
+function ModeChoices({
+  label,
+  now,
+  onChoose,
+}: {
+  label: 'Mute now' | 'Pause'
+  now: number
+  onChoose: (length: Length) => void
+}) {
+  return (
+    <div className="mt-3 first:mt-0" role="group" aria-label={label}>
+      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+        {label}
+      </p>
+      <div className="grid grid-cols-3 gap-2">
+        {(Object.keys(LENGTH_LABELS) as Length[]).map((length) => {
+          const until = clockTime(modeEnd(length, now))
+          return (
+            <button
+              key={length}
+              onClick={() => onChoose(length)}
+              aria-label={`${label} for ${LENGTH_LABELS[length].long}, until ${until}`}
+              className="flex flex-col items-center px-2 py-2 rounded-xl bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium transition-colors"
+            >
+              {LENGTH_LABELS[length].short}
+              <span className="text-[11px] font-normal text-muted-foreground">until {until}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 export default App
