@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // Extension smoke test: the overlay must appear on a blocked site.
 //
-// Loads the built Chrome extension into Chromium, forces blocking on, visits a
-// default-blocked host (www.reddit.com, mapped to a local server) and asserts:
-//   (a) #sordino-overlay is attached to the page, and
-//   (b) no page errors / console errors (e.g. the content script failing to
+// Loads the built Chrome extension into Chromium, presses "Mute now · 1 hour"
+// in the popup, visits a default-muted host (www.reddit.com, mapped to a local
+// server) and asserts:
+//   (a) the Mute now reached the store: its end alarm is set,
+//   (b) #sordino-overlay is attached to the page, and
+//   (c) no page errors / console errors (e.g. the content script failing to
 //       parse with "Cannot use import statement outside a module").
 //
 // Usage: node tests/e2e/overlay.smoke.mjs [distDir]   (default: .output/chrome-mv3)
@@ -12,8 +14,8 @@
 import { createServer } from 'node:http'
 import { builtExtension, collectErrors, launchExtension } from './harness.mjs'
 
-const { dist: DIST } = builtExtension()
-const HOST = 'www.reddit.com' // in DEFAULT_CATEGORIES (social), so blocked when blocking is on
+const { dist: DIST, manifest } = builtExtension()
+const HOST = 'www.reddit.com' // in DEFAULT_CATEGORIES (social), so muted while muting is in effect
 const OVERLAY = '#sordino-overlay'
 const OVERLAY_TIMEOUT_MS = 5000
 const SETTLE_MS = 500
@@ -35,24 +37,15 @@ const { ctx, sw, close } = await launchExtension(DIST, [
 
 let exitCode
 try {
-  // Force blocking on. Wait for the extension APIs to be bound in the worker
-  // (they appear shortly after it starts) and for onInstalled to have written
-  // settings: it does a read-modify-write and would clobber an earlier patch.
-  const forceBlockingOn = () =>
-    sw.evaluate(async () => {
-      const KEY = 'sordino_settings'
-      if (!globalThis.chrome?.storage) return false
-      const s = (await chrome.storage.local.get(KEY))[KEY]
-      if (!s?.blockState) return false
-      s.blockState = { ...s.blockState, manualOverride: 'on', pausedUntil: null }
-      await chrome.storage.local.set({ [KEY]: s })
-      return true
-    })
-  let forced = false
-  for (let i = 0; i < 100 && !(forced = await forceBlockingOn()); i++) {
-    await new Promise((r) => setTimeout(r, 50))
-  }
-  if (!forced) throw new Error('sordino_settings never initialised by onInstalled')
+  // Start Mute now from the popup, as a user would: popup -> store command ->
+  // write + effects. The reply arrives once the alarms have been applied.
+  const popup = await ctx.newPage()
+  await popup.goto(`chrome-extension://${new URL(sw.url()).host}/${manifest.action.default_popup}`)
+  await popup.getByRole('button', { name: /^Mute now for 1 hour/ }).click()
+  await popup.getByText(/^Muting until .* · Mute now$/).waitFor({ timeout: 5000 })
+  const alarm = await sw.evaluate(() => chrome.alarms.get('muting-change'))
+  if (!alarm) throw new Error('Mute now set no muting-change alarm')
+  await popup.close()
 
   const page = await ctx.newPage()
   const errors = []
@@ -74,11 +67,17 @@ try {
   const overlayPresent = overlay || (await page.$(OVERLAY)) !== null
 
   const pass = overlayPresent && errors.length === 0
-  console.log(JSON.stringify({ dist: DIST, overlay: overlayPresent, errors }, null, 2))
+  console.log(
+    JSON.stringify(
+      { dist: DIST, alarm: alarm.scheduledTime, overlay: overlayPresent, errors },
+      null,
+      2
+    )
+  )
   console.log(
     pass
       ? `PASS overlay rendered on http://${HOST}/ with no page errors`
-      : `FAIL ${overlayPresent ? '' : 'no overlay on blocked site'}${!overlayPresent && errors.length ? '; ' : ''}${errors.length ? `${errors.length} page error(s)` : ''}`
+      : `FAIL ${overlayPresent ? '' : 'no overlay on muted site'}${!overlayPresent && errors.length ? '; ' : ''}${errors.length ? `${errors.length} page error(s)` : ''}`
   )
   exitCode = pass ? 0 : 1
 } finally {
