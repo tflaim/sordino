@@ -3,10 +3,11 @@
 import { browser } from 'wxt/browser'
 import type { BadgeShow, Effect } from '../effects'
 
+// Empty text clears the badge: nothing to show when Sordino is not muting.
 const BADGE: Record<BadgeShow, { text: string; color: string }> = {
   muting: { text: ' ', color: '#22c55e' },
   paused: { text: 'II', color: '#eab308' },
-  off: { text: ' ', color: '#6b7280' },
+  off: { text: '', color: '#6b7280' },
 }
 
 export async function applyEffects(effects: Effect[]): Promise<void> {
