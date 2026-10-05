@@ -90,7 +90,7 @@ describe('Muting decision', () => {
       },
     },
     {
-      case: 'a schedule starting mid-Pause does not override the Pause',
+      case: 'a schedule starting mid-Pause leaves the Pause in place',
       schedules: [workHours],
       mode: pause('2026-10-05T08:30', '2026-10-05T09:30'),
       now: '2026-10-05T09:15',
@@ -135,6 +135,19 @@ describe('Muting decision', () => {
         source: { kind: 'pause' },
         until: at('2026-10-05T20:00'),
         nextChange: at('2026-10-05T20:00'),
+      },
+    },
+    {
+      // Most recent wins: starting Mute now replaces the Pause in the one slot.
+      case: 'Mute now during a Pause mutes, outside any schedule',
+      schedules: [workHours],
+      mode: muteNow('2026-10-05T19:30', '2026-10-05T19:45'), // started mid-Pause (19:00–20:00)
+      now: '2026-10-05T19:35',
+      expected: {
+        muted: true,
+        source: { kind: 'mute-now' },
+        until: at('2026-10-05T19:45'),
+        nextChange: at('2026-10-05T19:45'),
       },
     },
     {

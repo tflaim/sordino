@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 import { getSettings, updateSettings, subscribeToSettings } from '@/shared/storage'
-import { decideMuting, modeEnd, runningMode, type Length } from '@/shared/muting'
+import {
+  decideMuting,
+  modeEnd,
+  mutingShow,
+  runningMode,
+  type Length,
+  type MutingShow,
+} from '@/shared/muting'
 import { clockTime, statusLine } from '@/shared/status'
 import type { SordinoSettings } from '@/shared/types'
 import { MAX_QUICK_BYPASSES } from '@/shared/types'
@@ -19,7 +26,7 @@ const LENGTH_LABELS: Record<Length, { short: string; long: string }> = {
   'rest-of-today': { short: 'Rest of today', long: 'the rest of today' },
 }
 
-type BlockingStatus = 'active' | 'paused' | 'inactive' | 'bypass'
+type PopupStatus = MutingShow | 'bypass'
 
 // Format milliseconds as "Xm Xs"
 function formatTimeRemaining(ms: number): string {
@@ -76,11 +83,7 @@ function App() {
   const running = runningMode(state.mode, now)
   const hasBypass = bypassTimeLeft !== null && settings.bypassState.activeBypass
 
-  let status: BlockingStatus = muting.muted
-    ? 'active'
-    : muting.source.kind === 'pause'
-      ? 'paused'
-      : 'inactive'
+  let status: PopupStatus = mutingShow(muting)
   let statusText = statusLine(muting)
   let statusSubtext = running ? null : 'Following your schedules'
 
@@ -173,10 +176,10 @@ function App() {
         <div
           className={cn(
             'relative rounded-xl p-5 transition-colors duration-200',
-            status === 'active' && 'bg-primary/15',
+            status === 'muting' && 'bg-primary/15',
             status === 'bypass' && 'bg-info/15',
             status === 'paused' && 'bg-warning/15',
-            status === 'inactive' && 'bg-secondary/50'
+            status === 'off' && 'bg-secondary/50'
           )}
         >
           <div className="relative">
@@ -188,20 +191,20 @@ function App() {
                   <div
                     className={cn(
                       'w-2.5 h-2.5 rounded-full',
-                      status === 'active' &&
+                      status === 'muting' &&
                         'bg-success motion-safe:animate-[pulse_1.5s_ease-in-out_infinite]',
                       status === 'paused' && 'bg-warning',
-                      status === 'inactive' && 'bg-muted-foreground/50'
+                      status === 'off' && 'bg-muted-foreground/50'
                     )}
                   />
                 )}
                 <span
                   className={cn(
                     'text-sm font-medium transition-colors duration-200',
-                    status === 'active' && 'text-primary',
+                    status === 'muting' && 'text-primary',
                     status === 'bypass' && 'text-info',
                     status === 'paused' && 'text-warning',
-                    status === 'inactive' && 'text-muted-foreground'
+                    status === 'off' && 'text-muted-foreground'
                   )}
                 >
                   {statusText}
@@ -210,11 +213,11 @@ function App() {
             </div>
 
             {statusSubtext && (
-              <p className={cn('text-sm text-muted-foreground', status !== 'active' ? 'mb-4' : '')}>
+              <p className={cn('text-sm text-muted-foreground', status !== 'muting' ? 'mb-4' : '')}>
                 {statusSubtext}
               </p>
             )}
-            {status === 'active' && (
+            {status === 'muting' && (
               <p className="text-xs text-muted-foreground/70 mb-4">
                 {(() => {
                   const enabledSiteCount =
@@ -240,15 +243,19 @@ function App() {
               </button>
             )}
 
-            {running && (
-              <button
-                onClick={() => send({ type: 'back-to-schedule' })}
-                className="w-full mb-4 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium transition-colors"
-              >
-                <Play className="w-4 h-4" />
-                Back to schedule
-              </button>
-            )}
+            {/* Always one tap away; on schedule already, it changes nothing. */}
+            <button
+              onClick={() => send({ type: 'back-to-schedule' })}
+              className={cn(
+                'w-full mb-4 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors',
+                running
+                  ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
+                  : 'bg-secondary/40 hover:bg-secondary/60 text-muted-foreground'
+              )}
+            >
+              <Play className="w-4 h-4" />
+              Back to schedule
+            </button>
 
             <ModeChoices
               label="Mute now"

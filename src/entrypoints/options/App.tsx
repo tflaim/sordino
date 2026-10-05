@@ -13,7 +13,7 @@ import {
   CONFIRM_RESET_MS,
 } from '@/shared/types'
 import { cn } from '@/shared/utils'
-import { decideMuting } from '@/shared/muting'
+import { decideMuting, mutingShow } from '@/shared/muting'
 import { statusLine } from '@/shared/status'
 import { useNow, useSordinoState } from '@/shared/use-sordino-state'
 import {
@@ -404,12 +404,13 @@ function RightNowCallout({ settings }: { settings: SordinoSettings }) {
   const now = useNow()
   if (!state) return null
   const muting = decideMuting(settings.schedules, state.mode, now)
-  const paused = muting.source.kind === 'pause'
   const body =
     muting.source.kind === 'none'
       ? 'Not muting. Turn on a schedule below to start'
       : statusLine(muting)
-  const dotColor = paused ? 'bg-warning' : muting.muted ? 'bg-success' : 'bg-muted-foreground/50'
+  const dotColor = { muting: 'bg-success', paused: 'bg-warning', off: 'bg-muted-foreground/50' }[
+    mutingShow(muting)
+  ]
 
   return (
     <div className="mb-8 flex items-center gap-2.5 px-4 py-2.5 rounded-lg bg-secondary/30 border border-border/40 text-sm">

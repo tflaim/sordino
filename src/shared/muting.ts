@@ -93,8 +93,17 @@ function sample(
 }
 
 function sameAnswer(a: Pick<Muting, 'muted' | 'source'>, b: Pick<Muting, 'muted' | 'source'>) {
-  if (a.muted !== b.muted || a.source.kind !== b.source.kind) return false
-  return a.source.kind !== 'schedule' || a.source.id === (b.source as { id: string }).id
+  if (a.muted !== b.muted) return false
+  if (a.source.kind === 'schedule' && b.source.kind === 'schedule')
+    return a.source.id === b.source.id
+  return a.source.kind === b.source.kind
+}
+
+/** The one-word state every surface shows: the badge, the popup, settings. */
+export type MutingShow = 'muting' | 'paused' | 'off'
+
+export function mutingShow(muting: Muting): MutingShow {
+  return muting.muted ? 'muting' : muting.source.kind === 'pause' ? 'paused' : 'off'
 }
 
 /** Every future moment the answer could change, ascending. */
