@@ -10,3 +10,6 @@ dist/
 .env.local
 CLAUDE.md
 .claude/worktrees/
+
+# Verification evidence (skill keeps proofs outside git)
+.cursor/skills/verify-sordino/artifacts/*/
