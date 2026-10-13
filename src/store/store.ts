@@ -1,6 +1,7 @@
 // The Sordino store: the one writer of Sordino's persisted state, in the
 // background only (ADR-0004). Its interface is `openStore`, `dispatch` and `settle`.
 import { modeEnd, runningMode } from '@/shared/muting'
+import { validateSchedule, type Schedule } from '@/shared/schedule'
 import {
   mayRun,
   parseCommand,
@@ -10,9 +11,8 @@ import {
   type Result,
   type Sender,
 } from './commands'
-import { parseConfig, parseState, parseUsage } from './docs'
+import { parseState, parseUsage, resolveConfig } from './docs'
 import { desiredEffects, type Effect } from './effects'
-import { legacySchedules } from './legacy'
 import type { Clock, StoragePort, StoredDocs, StoredKey } from './ports'
 
 export interface SordinoStore {
@@ -41,17 +41,14 @@ export async function openStore(deps: {
   clock: Clock
 }): Promise<SordinoStore> {
   const { storage, clock } = deps
-  const raw = await storage.read(KEYS)
+  const raw = await storage.read([...KEYS, 'sordino_settings'])
   let docs: StoredDocs = {
-    config: parseConfig(),
+    config: resolveConfig(raw.config, raw.sordino_settings),
     state: parseState(raw.state),
     usage: parseUsage(),
   }
   const stale = changedKeys(raw, docs)
   if (stale.length) await storage.write(pick(docs, stale))
-
-  const schedules = async () =>
-    legacySchedules((await storage.read(['sordino_settings'])).sordino_settings)
 
   async function run<C extends Command>(
     command: C,
@@ -61,12 +58,6 @@ export async function openStore(deps: {
     if (!parsed) return refuse('invalid-command', `not a Sordino command: ${describe(command)}`)
     if (!mayRun(parsed, sender)) return refuse('not-allowed', `${parsed.type} from ${sender.kind}`)
     const now = clock()
-    let current: Awaited<ReturnType<typeof schedules>>
-    try {
-      current = await schedules()
-    } catch (e) {
-      return refuse('storage-failed', String(e))
-    }
     const { outcome, next } = handle(parsed, docs, now)
     const changed = changedKeys(docs, { ...docs, ...next })
     if (changed.length) {
@@ -80,7 +71,7 @@ export async function openStore(deps: {
     }
     return {
       result: { ok: true, outcome: outcome as Outcome<C> },
-      effects: desiredEffects(current, docs.state, now),
+      effects: desiredEffects(docs.config.schedules, docs.state, now),
     }
   }
 
@@ -92,7 +83,7 @@ export async function openStore(deps: {
       return result
     },
     async settle() {
-      return desiredEffects(await schedules(), docs.state, clock())
+      return desiredEffects(docs.config.schedules, docs.state, clock())
     },
   }
 }
@@ -121,6 +112,39 @@ function handle(
       return running
         ? { outcome: { kind: 'back-to-schedule' }, next: { state: { ...docs.state, mode: null } } }
         : { outcome: { kind: 'already-on-schedule' }, next: {} }
+    case 'save-schedule': {
+      const validated = validateSchedule(command.schedule)
+      if (!validated.ok)
+        return { outcome: { kind: 'refused', reasons: validated.reasons }, next: {} }
+      const id = validated.schedule.id ?? crypto.randomUUID()
+      const schedule: Schedule = { ...validated.schedule, id }
+      const list = docs.config.schedules
+      const index = list.findIndex((s) => s.id === id)
+      if (index >= 0 && sameValue(list[index], schedule)) {
+        return { outcome: { kind: 'unchanged' }, next: {} }
+      }
+      const schedules = list.slice()
+      if (index >= 0) schedules[index] = schedule
+      else schedules.push(schedule)
+      return {
+        outcome: { kind: 'saved', schedule },
+        next: { config: { ...docs.config, schedules } },
+      }
+    }
+    case 'delete-schedule': {
+      if (!docs.config.schedules.some((s) => s.id === command.id)) {
+        return { outcome: { kind: 'missing' }, next: {} }
+      }
+      return {
+        outcome: { kind: 'deleted' },
+        next: {
+          config: {
+            ...docs.config,
+            schedules: docs.config.schedules.filter((s) => s.id !== command.id),
+          },
+        },
+      }
+    }
   }
 }
 

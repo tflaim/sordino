@@ -1,8 +1,8 @@
 // Readers in any context (popup, settings, overlay) read storage directly and
 // subscribe; reads never write (decision 35). Docs are parsed in memory, so a
 // reader never sees an unversioned or malformed shape.
-import { parseConfig, parseState, parseUsage } from './docs'
-import type { StorageReadPort, StoredDocs, StoredKey } from './ports'
+import { parseConfig, parseState, parseUsage, resolveConfig } from './docs'
+import type { StorageKey, StorageReadPort, StoredDocs, StoredKey } from './ports'
 
 const parse: { [K in StoredKey]: (raw: unknown) => StoredDocs[K] } = {
   config: parseConfig,
@@ -12,9 +12,17 @@ const parse: { [K in StoredKey]: (raw: unknown) => StoredDocs[K] } = {
 
 function parseAll<K extends StoredKey>(
   keys: readonly K[],
-  raw: { [P in K]?: unknown }
+  raw: { [P in K]?: unknown },
+  legacySettings?: unknown
 ): Pick<StoredDocs, K> {
-  return Object.fromEntries(keys.map((k) => [k, parse[k](raw[k])])) as Pick<StoredDocs, K>
+  return Object.fromEntries(
+    keys.map((k) => [
+      k,
+      k === 'config'
+        ? resolveConfig((raw as { config?: unknown }).config, legacySettings)
+        : parse[k](raw[k]),
+    ])
+  ) as Pick<StoredDocs, K>
 }
 
 export interface SordinoReader {
@@ -29,7 +37,12 @@ export interface SordinoReader {
 export function openReader(storage: StorageReadPort): SordinoReader {
   return {
     async read(...keys) {
-      return parseAll(keys, await storage.read(keys))
+      // A config with no schedule list yet is filled from the 1.x key, in memory.
+      const list = keys as readonly StoredKey[]
+      const ask: StorageKey[] = list.includes('config') ? [...list, 'sordino_settings'] : [...list]
+      const raw = await storage.read(ask)
+      const legacy = (raw as { sordino_settings?: unknown }).sordino_settings
+      return parseAll(keys, raw, legacy)
     },
     watch(keys, onChange) {
       return storage.watch(keys, (changed) => {

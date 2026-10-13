@@ -1,8 +1,8 @@
-// React hook for extension pages: the store's `state` doc, read through the
+// React hooks for extension pages: the store's docs, read through the
 // read-only port and kept current by watching storage. Never writes.
 import { useEffect, useState } from 'react'
 import { chromeStorageReader } from '@/store/adapters/chrome-storage-reader'
-import type { StateDoc } from '@/store/docs'
+import type { ConfigDoc, StateDoc } from '@/store/docs'
 import { openReader } from '@/store/reader'
 
 export function useSordinoState(): StateDoc | null {
@@ -18,6 +18,21 @@ export function useSordinoState(): StateDoc | null {
     return stop
   }, [])
   return state
+}
+
+export function useSordinoConfig(): ConfigDoc | null {
+  const [config, setConfig] = useState<ConfigDoc | null>(null)
+  useEffect(() => {
+    const reader = openReader(chromeStorageReader())
+    let watched = false
+    const stop = reader.watch(['config'], (docs) => {
+      watched = true
+      if (docs.config) setConfig(docs.config)
+    })
+    reader.read('config').then((docs) => watched || setConfig(docs.config))
+    return stop
+  }, [])
+  return config
 }
 
 /** The current time, ticking every `everyMs` so end times and expiry stay true. */

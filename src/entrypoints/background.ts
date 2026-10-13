@@ -229,8 +229,8 @@ async function handleMessage(message: MessageType, reader: SordinoReader): Promi
 
   switch (message.type) {
     case 'GET_BLOCK_STATUS': {
-      const { state } = await reader.read('state')
-      const muting = decideMuting(settings.schedules, state.mode, Date.now())
+      const { state, config } = await reader.read('state', 'config')
+      const muting = decideMuting(config.schedules, state.mode, Date.now())
 
       if (!muting.muted) {
         return { isBlocked: false }
@@ -390,16 +390,10 @@ export default defineBackground(() => {
     await settle()
   })
 
-  // Transitional, until schedules move into `config` (#7) and the overlay
-  // watches storage itself (#5): schedules edited on the 1.x settings page
-  // re-settle the badge and alarms, and a Mute now or Pause re-checks open tabs.
-  let lastSchedules: string | undefined
-  storage.watch(['sordino_settings'], ({ sordino_settings }) => {
-    const schedules = JSON.stringify((sordino_settings as SordinoSettings | undefined)?.schedules)
-    if (schedules === lastSchedules) return
-    lastSchedules = schedules
-    void settle()
-  })
+  // Schedules live in `config`. A change re-settles the badge and alarms.
+  // The overlay still asks GET_BLOCK_STATUS until it watches storage itself (#5),
+  // and a Mute now or Pause re-checks open tabs.
+  reader.watch(['config'], () => void settle())
   reader.watch(['state'], () => void broadcastSettingsUpdate())
 
   // 1.x messages from the overlay and settings page, until their tickets

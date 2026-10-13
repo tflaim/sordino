@@ -199,9 +199,6 @@ export const DEFAULT_SETTINGS: SordinoSettings = {
   scaffoldingMode: false,
 }
 
-// Template schedule IDs that cannot be edited or deleted
-export const TEMPLATE_SCHEDULE_IDS = ['work-hours', 'extended-work', 'evenings', 'always-on']
-
 // Message types for communication between components
 export type MessageType =
   | { type: 'GET_BLOCK_STATUS'; url: string }

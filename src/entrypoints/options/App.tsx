@@ -4,43 +4,17 @@ import {
   updateSettings as updateSettingsQueued,
   subscribeToSettings,
 } from '@/shared/storage'
-import type { SordinoSettings, Schedule, Category, DayOfWeek } from '@/shared/types'
-import {
-  TEMPLATE_SCHEDULE_IDS,
-  DEFAULT_SCHEDULES,
-  getLocalDateString,
-  MAX_QUICK_BYPASSES,
-  CONFIRM_RESET_MS,
-} from '@/shared/types'
+import type { SordinoSettings, Category } from '@/shared/types'
+import { getLocalDateString, MAX_QUICK_BYPASSES } from '@/shared/types'
 import { cn } from '@/shared/utils'
 import { decideMuting, mutingShow } from '@/shared/muting'
 import { statusLine } from '@/shared/status'
-import { useNow, useSordinoState } from '@/shared/use-sordino-state'
-import {
-  Plus,
-  Trash2,
-  X,
-  Check,
-  ChevronDown,
-  RefreshCw,
-  BarChart3,
-  Settings,
-  Activity,
-  AlertCircle,
-} from 'lucide-react'
+import { useNow, useSordinoConfig, useSordinoState } from '@/shared/use-sordino-state'
+import { SchedulesSection } from './Schedules'
+import { Plus, X, Check, ChevronDown, RefreshCw, BarChart3, Settings, Activity } from 'lucide-react'
 import logoUrl from '@/assets/logo.png'
 
 type Tab = 'settings' | 'usage'
-
-const DAYS: { key: DayOfWeek; label: string; short: string }[] = [
-  { key: 'mon', label: 'Monday', short: 'M' },
-  { key: 'tue', label: 'Tuesday', short: 'T' },
-  { key: 'wed', label: 'Wednesday', short: 'W' },
-  { key: 'thu', label: 'Thursday', short: 'T' },
-  { key: 'fri', label: 'Friday', short: 'F' },
-  { key: 'sat', label: 'Saturday', short: 'S' },
-  { key: 'sun', label: 'Sunday', short: 'S' },
-]
 
 function App() {
   const [settings, setSettings] = useState<SordinoSettings | null>(null)
@@ -115,54 +89,9 @@ function App() {
                 begins. Mirrors the header status pill in plain-sentence form
                 so the ADHD-primary persona doesn't have to look back up
                 during a scroll-and-scan task. */}
-            <RightNowCallout settings={settings} />
+            <RightNowCallout />
 
-            {/* Schedules Section */}
-            <section className="mb-10">
-              <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Schedules</h2>
-              <p className="text-sm text-muted-foreground mb-4">
-                Template schedules can be toggled on/off. Create custom schedules for full control.
-              </p>
-              <div className="space-y-3">
-                {settings.schedules.map((schedule) => (
-                  <ScheduleCard
-                    key={schedule.id}
-                    schedule={schedule}
-                    isTemplate={TEMPLATE_SCHEDULE_IDS.includes(schedule.id)}
-                    onToggle={() => {
-                      updateSettings((s) => ({
-                        ...s,
-                        schedules: s.schedules.map((sch) =>
-                          sch.id === schedule.id ? { ...sch, enabled: !sch.enabled } : sch
-                        ),
-                      }))
-                    }}
-                    onUpdate={(updated) => {
-                      updateSettings((s) => ({
-                        ...s,
-                        schedules: s.schedules.map((sch) =>
-                          sch.id === schedule.id ? updated : sch
-                        ),
-                      }))
-                    }}
-                    onDelete={() => {
-                      updateSettings((s) => ({
-                        ...s,
-                        schedules: s.schedules.filter((sch) => sch.id !== schedule.id),
-                      }))
-                    }}
-                  />
-                ))}
-              </div>
-              <AddScheduleButton
-                onAdd={(schedule) => {
-                  updateSettings((s) => ({
-                    ...s,
-                    schedules: [...s.schedules, schedule],
-                  }))
-                }}
-              />
-            </section>
+            <SchedulesSection />
 
             <MusicalDivider />
 
@@ -297,8 +226,8 @@ function Footer() {
             Bypass Settings.
           </p>
           <p>
-            Blocking runs on whichever schedules you turn on. Multiple schedules can overlap; if any
-            one is active, blocking is active.
+            Muting runs on whichever schedules you turn on. Schedules can overlap; if any one is
+            active, muting is active.
           </p>
         </div>
       )}
@@ -399,11 +328,12 @@ function MusicalDivider() {
 // was removed to avoid two indicators showing the same information). Reads
 // as one sentence per state, no parental prefix, no end-of-line period
 // (matches the no-period pill convention elsewhere).
-function RightNowCallout({ settings }: { settings: SordinoSettings }) {
+function RightNowCallout() {
   const state = useSordinoState()
+  const config = useSordinoConfig()
   const now = useNow()
-  if (!state) return null
-  const muting = decideMuting(settings.schedules, state.mode, now)
+  if (!state || !config) return null
+  const muting = decideMuting(config.schedules, state.mode, now)
   const body =
     muting.source.kind === 'none'
       ? 'Not muting. Turn on a schedule below to start'
@@ -437,355 +367,6 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
           checked ? 'translate-x-[22px]' : 'translate-x-[2px]'
         )}
       />
-    </button>
-  )
-}
-
-function ScheduleCard({
-  schedule,
-  isTemplate = false,
-  onToggle,
-  onUpdate,
-  onDelete,
-}: {
-  schedule: Schedule
-  isTemplate?: boolean
-  onToggle: () => void
-  onUpdate: (schedule: Schedule) => void
-  onDelete: () => void
-}) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
-  const [editedSchedule, setEditedSchedule] = useState(schedule)
-
-  // Auto-cancel the delete-confirm after 8 seconds of inaction so the UI
-  // doesn't strand a user mid-action. 8s leaves slack for the ADHD-primary
-  // persona to glance away and come back without losing the state.
-  useEffect(() => {
-    if (!isConfirmingDelete) return
-    const t = setTimeout(() => setIsConfirmingDelete(false), CONFIRM_RESET_MS)
-    return () => clearTimeout(t)
-  }, [isConfirmingDelete])
-
-  const formatDays = (days: DayOfWeek[]) => {
-    if (days.length === 7) return 'Every day'
-    if (days.length === 5 && !days.includes('sat') && !days.includes('sun')) return 'Weekdays'
-    if (days.length === 2 && days.includes('sat') && days.includes('sun')) return 'Weekends'
-    return days.map((d) => d.charAt(0).toUpperCase() + d.slice(1, 3)).join(', ')
-  }
-
-  const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(':').map(Number) as [number, number]
-    const h = hours % 12 || 12
-    const ampm = hours >= 12 ? 'PM' : 'AM'
-    return `${h}:${minutes.toString().padStart(2, '0')} ${ampm}`
-  }
-
-  if (isEditing) {
-    return (
-      <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200">
-        <input
-          type="text"
-          value={editedSchedule.name}
-          onChange={(e) => setEditedSchedule({ ...editedSchedule, name: e.target.value })}
-          className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-primary/50"
-          placeholder="Schedule name"
-        />
-
-        {/* Days */}
-        <div className="mb-4">
-          <p className="text-xs text-muted-foreground mb-2">Days</p>
-          <div className="flex gap-1">
-            {DAYS.map((day) => (
-              <button
-                key={day.key}
-                onClick={() => {
-                  const days = editedSchedule.days.includes(day.key)
-                    ? editedSchedule.days.filter((d) => d !== day.key)
-                    : [...editedSchedule.days, day.key]
-                  setEditedSchedule({ ...editedSchedule, days })
-                }}
-                className={cn(
-                  'w-8 h-8 rounded-full text-xs font-medium transition-colors duration-150 ease-out',
-                  editedSchedule.days.includes(day.key)
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
-                )}
-              >
-                {day.short}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Time */}
-        <div className="flex gap-4 mb-4">
-          <div className="flex-1">
-            <p className="text-xs text-muted-foreground mb-2">Start time</p>
-            <input
-              type="time"
-              value={editedSchedule.startTime}
-              onChange={(e) => setEditedSchedule({ ...editedSchedule, startTime: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-            />
-          </div>
-          <div className="flex-1">
-            <p className="text-xs text-muted-foreground mb-2">End time</p>
-            <input
-              type="time"
-              value={editedSchedule.endTime}
-              onChange={(e) => setEditedSchedule({ ...editedSchedule, endTime: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-            />
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={() => {
-              setIsEditing(false)
-              setEditedSchedule(schedule)
-            }}
-            className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-secondary transition-colors duration-150 ease-out"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              onUpdate(editedSchedule)
-              setIsEditing(false)
-            }}
-            className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors duration-150 ease-out"
-          >
-            Save
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div
-      className={cn(
-        'rounded-xl border p-4 transition-[background-color,border-color,opacity] duration-200 ease-out',
-        schedule.enabled
-          ? 'bg-secondary/30 border-border'
-          : 'bg-transparent border-border/50 opacity-60'
-      )}
-    >
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-3">
-          <Toggle checked={schedule.enabled} onChange={onToggle} />
-          <div>
-            <p className="font-medium">{schedule.name}</p>
-            <p className="text-sm text-muted-foreground">
-              {formatDays(schedule.days)} • {formatTime(schedule.startTime)} -{' '}
-              {formatTime(schedule.endTime)}
-            </p>
-          </div>
-        </div>
-        {!isTemplate && (
-          <div className="flex items-center gap-1">
-            {isConfirmingDelete ? (
-              <>
-                <button
-                  onClick={() => {
-                    setIsConfirmingDelete(false)
-                    onDelete()
-                  }}
-                  className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-foreground hover:bg-secondary transition-colors duration-150 ease-out"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  Remove
-                </button>
-                <button
-                  onClick={() => setIsConfirmingDelete(false)}
-                  className="px-2 py-1 rounded text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150 ease-out"
-                >
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="px-2 py-1 rounded text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150 ease-out"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => setIsConfirmingDelete(true)}
-                  className="p-1 rounded text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors duration-150 ease-out"
-                  aria-label="Remove schedule"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </>
-            )}
-          </div>
-        )}
-        {isTemplate && <span className="text-xs text-muted-foreground/60 px-2 py-1">Template</span>}
-      </div>
-    </div>
-  )
-}
-
-// Check if a schedule matches a template schedule
-function matchesTemplateSchedule(schedule: Schedule): Schedule | null {
-  for (const template of DEFAULT_SCHEDULES) {
-    const sameDays =
-      schedule.days.length === template.days.length &&
-      schedule.days.every((d) => template.days.includes(d))
-    const sameTime =
-      schedule.startTime === template.startTime && schedule.endTime === template.endTime
-    if (sameDays && sameTime) {
-      return template
-    }
-  }
-  return null
-}
-
-function AddScheduleButton({ onAdd }: { onAdd: (schedule: Schedule) => void }) {
-  const [isAdding, setIsAdding] = useState(false)
-  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null)
-  const [schedule, setSchedule] = useState<Schedule>({
-    id: '',
-    name: '',
-    enabled: true,
-    days: ['mon', 'tue', 'wed', 'thu', 'fri'],
-    startTime: '09:00',
-    endTime: '17:00',
-  })
-
-  // Check for duplicates whenever schedule changes
-  useEffect(() => {
-    if (!isAdding) return
-
-    const matchedTemplate = matchesTemplateSchedule(schedule)
-    if (matchedTemplate) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- 1.x surface, rebuilt in 2.0
-      setDuplicateWarning(
-        `This matches the "${matchedTemplate.name}" template. Consider using that instead.`
-      )
-    } else {
-      setDuplicateWarning(null)
-    }
-  }, [schedule.days, schedule.startTime, schedule.endTime, isAdding])
-
-  const handleAdd = () => {
-    if (!schedule.name.trim()) return
-    onAdd({
-      ...schedule,
-      id: `custom-${Date.now()}`,
-    })
-    setIsAdding(false)
-    setDuplicateWarning(null)
-    setSchedule({
-      id: '',
-      name: '',
-      enabled: true,
-      days: ['mon', 'tue', 'wed', 'thu', 'fri'],
-      startTime: '09:00',
-      endTime: '17:00',
-    })
-  }
-
-  if (isAdding) {
-    return (
-      <div className="mt-3 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-4">
-        <input
-          type="text"
-          value={schedule.name}
-          onChange={(e) => setSchedule({ ...schedule, name: e.target.value })}
-          className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-primary/50"
-          placeholder="New schedule name"
-          autoFocus
-        />
-
-        <div className="mb-4">
-          <p className="text-xs text-muted-foreground mb-2">Days</p>
-          <div className="flex gap-1">
-            {DAYS.map((day) => (
-              <button
-                key={day.key}
-                onClick={() => {
-                  const days = schedule.days.includes(day.key)
-                    ? schedule.days.filter((d) => d !== day.key)
-                    : [...schedule.days, day.key]
-                  setSchedule({ ...schedule, days })
-                }}
-                className={cn(
-                  'w-8 h-8 rounded-full text-xs font-medium transition-colors duration-150 ease-out',
-                  schedule.days.includes(day.key)
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
-                )}
-              >
-                {day.short}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex gap-4 mb-4">
-          <div className="flex-1">
-            <p className="text-xs text-muted-foreground mb-2">Start time</p>
-            <input
-              type="time"
-              value={schedule.startTime}
-              onChange={(e) => setSchedule({ ...schedule, startTime: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-            />
-          </div>
-          <div className="flex-1">
-            <p className="text-xs text-muted-foreground mb-2">End time</p>
-            <input
-              type="time"
-              value={schedule.endTime}
-              onChange={(e) => setSchedule({ ...schedule, endTime: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-            />
-          </div>
-        </div>
-
-        {/* Duplicate Warning */}
-        {duplicateWarning && (
-          <div className="flex items-start gap-2 mb-4 p-3 rounded-lg bg-warning/10 border border-warning/20">
-            <AlertCircle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
-            <p className="text-sm text-warning">{duplicateWarning}</p>
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={() => {
-              setIsAdding(false)
-              setDuplicateWarning(null)
-            }}
-            className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-secondary transition-colors duration-150 ease-out"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleAdd}
-            disabled={!schedule.name.trim()}
-            className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors duration-150 ease-out disabled:opacity-50"
-          >
-            Add Schedule
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <button
-      onClick={() => setIsAdding(true)}
-      className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed border-border hover:border-primary/50 hover:bg-primary/5 text-sm text-muted-foreground hover:text-foreground transition-[border-color,background-color,color] duration-200 ease-out"
-    >
-      <Plus className="w-4 h-4" />
-      Add schedule
     </button>
   )
 }

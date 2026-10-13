@@ -2,8 +2,7 @@
 // the time, whether muting is in effect, why, until when, and the next moment
 // the answer can change. Pure; the store derives its badge and alarms from it
 // and readers (popup, settings, overlay) call it on a snapshot they read.
-import { isScheduleActive } from './schedule'
-import type { Schedule } from './types'
+import { isScheduleActive, type Schedule } from './schedule'
 
 /** How long a Mute now or a Pause lasts, chosen when it starts. */
 export type Length = '15m' | '1h' | 'rest-of-today'
@@ -85,8 +84,7 @@ function sample(
 ): Pick<Muting, 'muted' | 'source'> {
   const running = runningMode(mode, t)
   if (running) return { muted: running.kind === 'mute-now', source: { kind: running.kind } }
-  const date = new Date(t)
-  const schedule = schedules.find((s) => isScheduleActive(s, date))
+  const schedule = schedules.find((s) => isScheduleActive(s, t))
   return schedule
     ? { muted: true, source: { kind: 'schedule', id: schedule.id, name: schedule.name } }
     : { muted: false, source: { kind: 'none' } }
@@ -113,9 +111,9 @@ function boundaries(schedules: readonly Schedule[], mode: Mode | null, now: numb
   const today = new Date(now)
   for (const s of schedules) {
     if (!s.enabled) continue
+    // All day covers every second of a chosen day, so the only edge is local midnight.
     for (let day = 0; day <= LOOKAHEAD_DAYS; day++) {
-      for (const hhmm of [s.startTime, s.endTime]) {
-        const [h, m] = hhmm.split(':').map(Number) as [number, number]
+      for (const [h, m] of clocksOf(s)) {
         const t = new Date(
           today.getFullYear(),
           today.getMonth(),
@@ -128,4 +126,14 @@ function boundaries(schedules: readonly Schedule[], mode: Mode | null, now: numb
     }
   }
   return [...times].sort((a, b) => a - b)
+}
+
+function clocksOf(schedule: Schedule): Array<[number, number]> {
+  if (schedule.allDay) return [[0, 0]]
+  const clocks: Array<[number, number]> = []
+  for (const hhmm of [schedule.startTime, schedule.endTime]) {
+    const match = /^(\d{2}):(\d{2})$/.exec(hhmm)
+    if (match) clocks.push([Number(match[1]), Number(match[2])])
+  }
+  return clocks
 }

@@ -1,7 +1,7 @@
 // Effects are desired state, not actions (decision 38): applying the same
 // effects twice is harmless, so a restarted service worker only needs to settle.
 import { decideMuting, mutingShow, type MutingShow } from '@/shared/muting'
-import type { Schedule } from '@/shared/types'
+import type { Schedule } from '@/shared/schedule'
 import type { StateDoc } from './docs'
 
 export type BadgeShow = MutingShow

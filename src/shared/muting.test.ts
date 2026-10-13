@@ -1,26 +1,73 @@
 import { describe, expect, it } from 'vitest'
 import { decideMuting, modeEnd, type Mode } from './muting'
-import type { Schedule } from './types'
+import type { Schedule } from './schedule'
 
-// vitest.config.ts pins TZ=Europe/London. 2026-10-05 is a Monday.
+// vitest.config.ts pins TZ=Europe/London. 2026-10-05 is a Monday, 2026-10-04 a Sunday.
 const at = (local: string) => new Date(local).getTime()
 
-const workHours: Schedule = {
+function schedule(
+  overrides: Omit<Schedule, 'enabled' | 'allDay' | 'appliesTo'> & Partial<Schedule>
+): Schedule {
+  return { enabled: true, allDay: false, appliesTo: 'all', ...overrides }
+}
+
+const workHours: Schedule = schedule({
   id: 'work-hours',
   name: 'Work hours',
-  enabled: true,
   days: ['mon', 'tue', 'wed', 'thu', 'fri'],
   startTime: '09:00',
   endTime: '17:00',
-}
-const extendedWork: Schedule = {
+})
+const extendedWork: Schedule = schedule({
   id: 'extended-work',
   name: 'Extended work',
-  enabled: true,
   days: ['mon', 'tue', 'wed', 'thu', 'fri'],
   startTime: '08:00',
   endTime: '18:00',
+})
+const evenings: Schedule = schedule({
+  id: 'evenings',
+  name: 'Evenings',
+  days: ['mon', 'tue', 'wed', 'thu', 'fri'],
+  startTime: '17:00',
+  endTime: '22:00',
+})
+const lateSunday: Schedule = schedule({
+  id: 'late',
+  name: 'Late night',
+  days: ['sun'],
+  startTime: '22:00',
+  endTime: '02:00',
+})
+const allDayMonday: Schedule = schedule({
+  id: 'monday',
+  name: 'Monday',
+  days: ['mon'],
+  allDay: true,
+  startTime: '00:00',
+  endTime: '23:59',
+})
+const allDayEveryDay: Schedule = {
+  ...allDayMonday,
+  id: 'always',
+  name: 'Always',
+  days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
 }
+const mondayNight: Schedule = { ...lateSunday, days: ['mon'] }
+const almostAllDay: Schedule = schedule({
+  id: 'almost',
+  name: 'Almost',
+  days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
+  startTime: '00:00',
+  endTime: '23:59',
+})
+const earlySunday: Schedule = schedule({
+  id: 'early',
+  name: 'Early',
+  days: ['sun'],
+  startTime: '00:00',
+  endTime: '04:00',
+})
 const pause = (since: string, until: string): Mode => ({
   kind: 'pause',
   since: at(since),
@@ -198,8 +245,152 @@ describe('Muting decision', () => {
         nextChange: at('2026-10-05T17:00'),
       },
     },
+    {
+      case: 'contiguous schedules report the merged end',
+      schedules: [workHours, evenings],
+      mode: null,
+      now: '2026-10-05T10:00',
+      expected: {
+        muted: true,
+        source: { kind: 'schedule', id: 'work-hours', name: 'Work hours' },
+        until: at('2026-10-05T22:00'),
+        nextChange: at('2026-10-05T17:00'),
+      },
+    },
+    {
+      case: 'an overnight schedule crosses midnight',
+      schedules: [lateSunday],
+      mode: null,
+      now: '2026-10-04T23:00',
+      expected: {
+        muted: true,
+        source: { kind: 'schedule', id: 'late', name: 'Late night' },
+        until: at('2026-10-05T02:00'),
+        nextChange: at('2026-10-05T02:00'),
+      },
+    },
+    {
+      case: 'an overnight Sunday schedule covers Monday morning',
+      schedules: [lateSunday],
+      mode: null,
+      now: '2026-10-05T01:00',
+      expected: {
+        muted: true,
+        source: { kind: 'schedule', id: 'late', name: 'Late night' },
+        until: at('2026-10-05T02:00'),
+        nextChange: at('2026-10-05T02:00'),
+      },
+    },
+    {
+      case: 'a Monday-only overnight schedule does not cover Monday morning',
+      schedules: [mondayNight],
+      mode: null,
+      now: '2026-10-05T01:00',
+      expected: {
+        muted: false,
+        source: { kind: 'none' },
+        until: null,
+        nextChange: at('2026-10-05T22:00'),
+      },
+    },
+    {
+      case: 'an all-day schedule is still on at 23:59:30 and ends at midnight',
+      schedules: [allDayMonday],
+      mode: null,
+      now: '2026-10-05T23:59:30',
+      expected: {
+        muted: true,
+        source: { kind: 'schedule', id: 'monday', name: 'Monday' },
+        until: at('2026-10-06T00:00'),
+        nextChange: at('2026-10-06T00:00'),
+      },
+    },
+    {
+      case: 'all day, every day, does not end at 23:59',
+      schedules: [allDayEveryDay],
+      mode: null,
+      now: '2026-10-05T23:59:30',
+      expected: {
+        muted: true,
+        source: { kind: 'schedule', id: 'always', name: 'Always' },
+        until: null,
+        nextChange: null,
+      },
+    },
+    {
+      case: 'a window ending at 23:59 is already over at 23:59:30',
+      schedules: [almostAllDay],
+      mode: null,
+      now: '2026-10-05T23:59:30',
+      expected: {
+        muted: false,
+        source: { kind: 'none' },
+        until: null,
+        nextChange: at('2026-10-06T00:00'),
+      },
+    },
+    {
+      // Clocks go back at 02:00 on Sunday 25 October. Friday 18:00 to Monday 09:00
+      // is not a whole number of 24-hour days.
+      case: 'the next start after the autumn clock change is local Monday 09:00',
+      schedules: [workHours],
+      mode: null,
+      now: '2026-10-23T18:00',
+      expected: {
+        muted: false,
+        source: { kind: 'none' },
+        until: null,
+        nextChange: at('2026-10-26T09:00'),
+      },
+    },
+    {
+      // Clocks spring forward at 01:00 on Sunday 29 March, so 01:30 does not exist.
+      case: 'a schedule keeps its local end through the spring-forward morning',
+      schedules: [earlySunday],
+      mode: null,
+      now: '2026-03-29T00:30',
+      expected: {
+        muted: true,
+        source: { kind: 'schedule', id: 'early', name: 'Early' },
+        until: at('2026-03-29T04:00'),
+        nextChange: at('2026-03-29T04:00'),
+      },
+    },
+    {
+      case: 'the same schedule is still on at the time the missing hour collapses to',
+      schedules: [earlySunday],
+      mode: null,
+      now: '2026-03-29T02:30',
+      expected: {
+        muted: true,
+        source: { kind: 'schedule', id: 'early', name: 'Early' },
+        until: at('2026-03-29T04:00'),
+        nextChange: at('2026-03-29T04:00'),
+      },
+    },
   ])('$case', ({ schedules, mode, now, expected }) => {
     expect(decideMuting(schedules, mode, at(now))).toEqual(expected)
+  })
+
+  it('covers both 01:30s on the day the clocks go back, and ends at the later 02:00', () => {
+    const hour = schedule({
+      id: 'hour',
+      name: 'The small hour',
+      days: ['sun'],
+      startTime: '01:00',
+      endTime: '02:00',
+    })
+    const end = new Date('2026-10-25T02:00:00+00:00').getTime()
+    const expected = {
+      muted: true,
+      source: { kind: 'schedule', id: 'hour', name: 'The small hour' },
+      until: end,
+      nextChange: end,
+    }
+    // 01:30 happens twice: first on BST, then again after the clocks go back to GMT.
+    for (const now of ['2026-10-25T01:30:00+01:00', '2026-10-25T01:30:00+00:00']) {
+      expect(decideMuting([hour], null, new Date(now).getTime())).toEqual(expected)
+    }
   })
 })
 

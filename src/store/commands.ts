@@ -2,17 +2,30 @@
 // A new command touches four places here and one in store.ts: `Command`,
 // `OutcomeMap`, `SENDERS`, `parseCommand`, and its handler.
 import { LENGTHS, type Length } from '@/shared/muting'
+import {
+  coerceScheduleDraft,
+  type Schedule,
+  type ScheduleDraft,
+  type ScheduleReason,
+} from '@/shared/schedule'
 import { isRecord } from './docs'
 
 export type Command =
   | { type: 'mute-now'; length: Length }
   | { type: 'pause'; length: Length }
   | { type: 'back-to-schedule' }
+  | { type: 'save-schedule'; schedule: ScheduleDraft }
+  | { type: 'delete-schedule'; id: string }
 
 export interface OutcomeMap {
   'mute-now': { kind: 'muting'; until: number }
   pause: { kind: 'paused'; until: number }
   'back-to-schedule': { kind: 'back-to-schedule' } | { kind: 'already-on-schedule' }
+  'save-schedule':
+    | { kind: 'saved'; schedule: Schedule }
+    | { kind: 'unchanged' }
+    | { kind: 'refused'; reasons: ScheduleReason[] }
+  'delete-schedule': { kind: 'deleted' } | { kind: 'missing' }
 }
 
 export type Outcome<C extends Command> = OutcomeMap[C['type']]
@@ -43,6 +56,8 @@ const SENDERS: { [T in Command['type']]: 'extension' } = {
   'mute-now': 'extension',
   pause: 'extension',
   'back-to-schedule': 'extension',
+  'save-schedule': 'extension',
+  'delete-schedule': 'extension',
 }
 
 export function mayRun(command: Command, sender: Sender): boolean {
@@ -60,6 +75,14 @@ export function parseCommand(raw: unknown): Command | null {
       return isLength(raw.length) ? { type: raw.type, length: raw.length } : null
     case 'back-to-schedule':
       return { type: 'back-to-schedule' }
+    case 'save-schedule': {
+      const schedule = coerceScheduleDraft(raw.schedule)
+      return schedule ? { type: 'save-schedule', schedule } : null
+    }
+    case 'delete-schedule':
+      return typeof raw.id === 'string' && raw.id.trim()
+        ? { type: 'delete-schedule', id: raw.id.trim() }
+        : null
     default:
       return null
   }
