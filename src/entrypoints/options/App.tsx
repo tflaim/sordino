@@ -13,7 +13,9 @@ import {
   CONFIRM_RESET_MS,
 } from '@/shared/types'
 import { cn } from '@/shared/utils'
-import { shouldBlock, getActiveSchedule, formatEndTime } from '@/shared/schedule'
+import { decideMuting, mutingShow } from '@/shared/muting'
+import { statusLine } from '@/shared/status'
+import { useNow, useSordinoState } from '@/shared/use-sordino-state'
 import {
   Plus,
   Trash2,
@@ -398,28 +400,17 @@ function MusicalDivider() {
 // as one sentence per state, no parental prefix, no end-of-line period
 // (matches the no-period pill convention elsewhere).
 function RightNowCallout({ settings }: { settings: SordinoSettings }) {
-  // eslint-disable-next-line react-hooks/purity -- 1.x surface, rebuilt in 2.0
-  const isPaused = !!settings.blockState.pausedUntil && Date.now() < settings.blockState.pausedUntil
-  const isManualOn = settings.blockState.manualOverride === 'on'
-  const isActive =
-    !isPaused &&
-    (isManualOn ||
-      (settings.blockState.manualOverride === null && shouldBlock(settings).shouldBlock))
-  const activeSchedule = isActive && !isManualOn ? getActiveSchedule(settings.schedules) : null
-
-  let body: string
-  if (isPaused) {
-    const pauseEnd = new Date(settings.blockState.pausedUntil!)
-    body = `Paused until ${pauseEnd.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-  } else if (isActive && activeSchedule) {
-    body = `Blocking until ${formatEndTime(activeSchedule)} via ${activeSchedule.name}`
-  } else if (isActive && isManualOn) {
-    body = 'Blocking manually'
-  } else {
-    body = 'Not blocking. Turn on a schedule below to start'
-  }
-
-  const dotColor = isPaused ? 'bg-warning' : isActive ? 'bg-success' : 'bg-muted-foreground/50'
+  const state = useSordinoState()
+  const now = useNow()
+  if (!state) return null
+  const muting = decideMuting(settings.schedules, state.mode, now)
+  const body =
+    muting.source.kind === 'none'
+      ? 'Not muting. Turn on a schedule below to start'
+      : statusLine(muting)
+  const dotColor = { muting: 'bg-success', paused: 'bg-warning', off: 'bg-muted-foreground/50' }[
+    mutingShow(muting)
+  ]
 
   return (
     <div className="mb-8 flex items-center gap-2.5 px-4 py-2.5 rounded-lg bg-secondary/30 border border-border/40 text-sm">

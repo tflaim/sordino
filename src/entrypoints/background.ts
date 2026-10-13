@@ -1,8 +1,14 @@
 import { defineBackground } from 'wxt/utils/define-background'
 import { getSettings, updateSettings } from '@/shared/storage'
-import { shouldBlock, getActiveSchedule, formatEndTime } from '@/shared/schedule'
+import { decideMuting } from '@/shared/muting'
+import { clockTime } from '@/shared/status'
 import type { SordinoSettings, MessageType } from '@/shared/types'
 import { getLocalDateString, MAX_QUICK_BYPASSES } from '@/shared/types'
+import { applyEffects } from '@/store/adapters/apply-effects'
+import { chromeStorage } from '@/store/adapters/chrome-storage'
+import { serveCommands } from '@/store/adapters/runtime'
+import { openReader, type SordinoReader } from '@/store/reader'
+import { openStore } from '@/store/store'
 
 // Broadcast settings update to all tabs so content scripts can react immediately
 async function broadcastSettingsUpdate(): Promise<void> {
@@ -47,49 +53,6 @@ async function clearCountedBlocks(): Promise<void> {
 async function hasCountedBlock(blockKey: string): Promise<boolean> {
   const counted = await getCountedBlocks()
   return counted.has(blockKey)
-}
-
-// Update extension icon badge to reflect blocking state
-type BadgeState = 'active' | 'paused' | 'inactive' | 'bypass'
-
-async function updateBadge(state: BadgeState): Promise<void> {
-  switch (state) {
-    case 'active':
-      // Small green square when blocking is active
-      await chrome.action.setBadgeText({ text: ' ' })
-      await chrome.action.setBadgeBackgroundColor({ color: '#22c55e' }) // green-500
-      break
-    case 'paused':
-      // Pause indicator (cross-platform safe text)
-      await chrome.action.setBadgeText({ text: 'II' })
-      await chrome.action.setBadgeBackgroundColor({ color: '#eab308' }) // yellow-500
-      break
-    case 'inactive':
-      // Small grey square when inactive
-      await chrome.action.setBadgeText({ text: ' ' })
-      await chrome.action.setBadgeBackgroundColor({ color: '#6b7280' }) // gray-500
-      break
-    case 'bypass':
-      // Timer indicator (cross-platform safe text)
-      await chrome.action.setBadgeText({ text: '5m' })
-      await chrome.action.setBadgeBackgroundColor({ color: '#f97316' }) // orange-500
-      break
-  }
-}
-
-// Determine badge state from settings
-function getBadgeState(settings: SordinoSettings): BadgeState {
-  // Check for active bypass first (highest priority - time sensitive)
-  const bypass = settings.bypassState.activeBypass
-  if (bypass && Date.now() < bypass.expiresAt) return 'bypass'
-
-  // Then check for paused
-  const isPaused = settings.blockState.pausedUntil && Date.now() < settings.blockState.pausedUntil
-  if (isPaused) return 'paused'
-
-  // Then check blocking status
-  const blockStatus = shouldBlock(settings)
-  return blockStatus.shouldBlock ? 'active' : 'inactive'
 }
 
 // Check if URL matches any blocked site
@@ -261,14 +224,15 @@ function getBlockKey(url: string): string {
   return getSiteFromUrl(url)
 }
 
-async function handleMessage(message: MessageType): Promise<unknown> {
+async function handleMessage(message: MessageType, reader: SordinoReader): Promise<unknown> {
   const settings = await checkBypassReset()
 
   switch (message.type) {
     case 'GET_BLOCK_STATUS': {
-      const blockStatus = shouldBlock(settings)
+      const { state } = await reader.read('state')
+      const muting = decideMuting(settings.schedules, state.mode, Date.now())
 
-      if (!blockStatus.shouldBlock) {
+      if (!muting.muted) {
         return { isBlocked: false }
       }
 
@@ -307,11 +271,10 @@ async function handleMessage(message: MessageType): Promise<unknown> {
         }
       })
 
-      const activeSchedule = getActiveSchedule(settings.schedules)
       return {
         isBlocked: true,
-        reason: blockStatus.reason,
-        timeRemaining: activeSchedule ? `until ${formatEndTime(activeSchedule)}` : undefined,
+        reason: muting.source.kind === 'schedule' ? muting.source.name : 'Mute now',
+        timeRemaining: muting.until === null ? undefined : `until ${clockTime(muting.until)}`,
         bypassesRemaining:
           (settings.maxBypasses ?? MAX_QUICK_BYPASSES) - settings.bypassState.quickBypassesUsed,
         bypassDuration: settings.bypassDurationMinutes ?? 5,
@@ -331,7 +294,7 @@ async function handleMessage(message: MessageType): Promise<unknown> {
       // Remove site from counted blocks (allows re-counting if they come back)
       await removeCountedBlock(site)
 
-      const updated = await updateSettings((s) => {
+      await updateSettings((s) => {
         const siteStats = { ...s.stats.siteStats }
         if (!siteStats[site]) {
           siteStats[site] = { blocks: 0, bypasses: 0 }
@@ -358,53 +321,12 @@ async function handleMessage(message: MessageType): Promise<unknown> {
           },
         }
       })
-      await updateBadge(getBadgeState(updated))
 
       return { success: true, remaining: remaining - 1 }
     }
 
     case 'GET_SETTINGS': {
       return settings
-    }
-
-    case 'TOGGLE_MANUAL_OVERRIDE': {
-      const updated = await updateSettings((s) => ({
-        ...s,
-        blockState: {
-          ...s.blockState,
-          manualOverride: message.state,
-          pausedUntil: null, // Clear pause when manually toggling
-        },
-      }))
-      await updateBadge(getBadgeState(updated))
-      await broadcastSettingsUpdate()
-      return { success: true }
-    }
-
-    case 'PAUSE_BLOCKING': {
-      const updated = await updateSettings((s) => ({
-        ...s,
-        blockState: {
-          ...s.blockState,
-          pausedUntil: message.until,
-        },
-      }))
-      await updateBadge(getBadgeState(updated))
-      await broadcastSettingsUpdate()
-      return { success: true }
-    }
-
-    case 'RESUME_BLOCKING': {
-      const updated = await updateSettings((s) => ({
-        ...s,
-        blockState: {
-          ...s.blockState,
-          pausedUntil: null, // Only clear pause, preserve manualOverride
-        },
-      }))
-      await updateBadge(getBadgeState(updated))
-      await broadcastSettingsUpdate()
-      return { success: true }
     }
 
     case 'EMERGENCY_REFRESH_BYPASSES': {
@@ -429,14 +351,13 @@ async function handleMessage(message: MessageType): Promise<unknown> {
     }
 
     case 'CLEAR_BYPASS': {
-      const updated = await updateSettings((s) => ({
+      await updateSettings((s) => ({
         ...s,
         bypassState: {
           ...s.bypassState,
           activeBypass: null,
         },
       }))
-      await updateBadge(getBadgeState(updated))
       await broadcastSettingsUpdate()
       return { success: true }
     }
@@ -447,79 +368,45 @@ async function handleMessage(message: MessageType): Promise<unknown> {
 }
 
 export default defineBackground(() => {
-  // Handle messages from content script and popup
-  chrome.runtime.onMessage.addListener((message: MessageType, _sender, sendResponse) => {
-    handleMessage(message).then(sendResponse)
-    return true // Keep channel open for async response
-  })
-
-  // Set up alarm to check schedule every minute
-  chrome.alarms.create('checkSchedule', { periodInMinutes: 1 })
-
-  chrome.alarms.onAlarm.addListener(async (alarm) => {
-    try {
-      if (alarm.name === 'checkSchedule') {
-        const settings = await checkBypassReset()
-        const blockStatus = shouldBlock(settings)
-
-        // Update block state and badge
-        const updated = await updateSettings((s) => ({
-          ...s,
-          blockState: {
-            ...s.blockState,
-            isBlocking: blockStatus.shouldBlock,
-            activeSchedule: blockStatus.reason ?? null,
-          },
-        }))
-        await updateBadge(getBadgeState(updated))
-
-        // Clear expired bypasses
-        if (settings.bypassState.activeBypass) {
-          if (Date.now() > settings.bypassState.activeBypass.expiresAt) {
-            await updateSettings((s) => ({
-              ...s,
-              bypassState: {
-                ...s.bypassState,
-                activeBypass: null,
-              },
-            }))
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Sordino: Error in alarm handler', error)
-    }
-  })
-
-  // Initialize on install
+  // The Sordino store is the one writer of `config`, `state` and `usage`
+  // (ADR-0004). Listeners are registered synchronously and wait for it to open.
+  const storage = chromeStorage()
+  const reader = openReader(storage)
+  const ready = openStore({ storage, clock: Date.now })
+  const settle = () =>
+    ready
+      .then((store) => store.settle())
+      .then(applyEffects)
+      .catch((error) => console.error('Sordino: could not settle', error))
+  serveCommands(ready, applyEffects)
+  chrome.alarms.onAlarm.addListener(settle) // Mute now / Pause ends, schedule boundaries
+  chrome.runtime.onStartup.addListener(settle)
   chrome.runtime.onInstalled.addListener(async () => {
     try {
-      const settings = await checkBypassReset()
-      const blockStatus = shouldBlock(settings)
-
-      const updated = await updateSettings((s) => ({
-        ...s,
-        blockState: {
-          ...s.blockState,
-          isBlocking: blockStatus.shouldBlock,
-          activeSchedule: blockStatus.reason ?? null,
-        },
-      }))
-      await updateBadge(getBadgeState(updated))
+      await checkBypassReset() // initialises the 1.x settings on install
     } catch (error) {
       console.error('Sordino: Error in onInstalled handler', error)
     }
+    await settle()
   })
 
-  // Initialize badge on service worker start (handles browser restart)
-  ;(async () => {
-    try {
-      const settings = await getSettings()
-      await updateBadge(getBadgeState(settings))
-    } catch (error) {
-      console.error('Sordino: Error initializing badge', error)
-    }
-  })()
+  // Transitional, until schedules move into `config` (#7) and the overlay
+  // watches storage itself (#5): schedules edited on the 1.x settings page
+  // re-settle the badge and alarms, and a Mute now or Pause re-checks open tabs.
+  let lastSchedules: string | undefined
+  storage.watch(['sordino_settings'], ({ sordino_settings }) => {
+    const schedules = JSON.stringify((sordino_settings as SordinoSettings | undefined)?.schedules)
+    if (schedules === lastSchedules) return
+    lastSchedules = schedules
+    void settle()
+  })
+  reader.watch(['state'], () => void broadcastSettingsUpdate())
 
-  console.log('Sordino background service worker initialized')
+  // 1.x messages from the overlay and settings page, until their tickets
+  // replace them with store commands.
+  chrome.runtime.onMessage.addListener((message: MessageType, _sender, sendResponse) => {
+    if (typeof message !== 'object' || message === null || !('type' in message)) return false
+    handleMessage(message, reader).then(sendResponse)
+    return true // Keep channel open for async response
+  })
 })
