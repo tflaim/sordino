@@ -10,6 +10,7 @@ import {
   type ScheduleReason,
 } from '@/shared/schedule'
 import { isRecord } from './docs'
+import type { ExportFile } from './migrate'
 
 export type Command =
   | { type: 'mute-now'; length: Length }
@@ -19,8 +20,12 @@ export type Command =
   | { type: 'delete-schedule'; id: string }
   | { type: 'add-muted-site'; input: string }
   | { type: 'remove-muted-site'; id: string }
+  | { type: 'export'; includeUsage: boolean }
+  | { type: 'import'; data: unknown }
 
 export interface OutcomeMap {
+  export: { kind: 'exported'; file: ExportFile }
+  import: { kind: 'imported' } | { kind: 'refused'; reason: string }
   'mute-now': { kind: 'muting'; until: number }
   pause: { kind: 'paused'; until: number }
   'back-to-schedule': { kind: 'back-to-schedule' } | { kind: 'already-on-schedule' }
@@ -58,6 +63,8 @@ export type Sender =
  * (#5, #6); everything else is for extension pages and the background.
  */
 const SENDERS: { [T in Command['type']]: 'extension' } = {
+  export: 'extension',
+  import: 'extension',
   'mute-now': 'extension',
   pause: 'extension',
   'back-to-schedule': 'extension',
@@ -77,6 +84,12 @@ const isLength = (v: unknown): v is Length => LENGTHS.includes(v as Length)
 export function parseCommand(raw: unknown): Command | null {
   if (!isRecord(raw)) return null
   switch (raw.type) {
+    case 'export':
+      return typeof raw.includeUsage === 'boolean'
+        ? { type: 'export', includeUsage: raw.includeUsage }
+        : null
+    case 'import':
+      return 'data' in raw ? { type: 'import', data: raw.data } : null
     case 'mute-now':
     case 'pause':
       return isLength(raw.length) ? { type: raw.type, length: raw.length } : null

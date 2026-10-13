@@ -1,0 +1,99 @@
+{
+  "schedules": [
+    {
+      "id": "work-hours",
+      "name": "Work hours",
+      "enabled": true,
+      "days": ["mon", "tue", "wed", "thu", "fri"],
+      "startTime": "09:00",
+      "endTime": "17:00"
+    },
+    {
+      "id": "extended-work",
+      "name": "Extended work",
+      "enabled": false,
+      "days": ["mon", "tue", "wed", "thu", "fri"],
+      "startTime": "08:00",
+      "endTime": "18:00"
+    },
+    {
+      "id": "evenings",
+      "name": "Evenings",
+      "enabled": false,
+      "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+      "startTime": "18:00",
+      "endTime": "22:00"
+    },
+    {
+      "id": "always-on",
+      "name": "Always on",
+      "enabled": false,
+      "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+      "startTime": "00:00",
+      "endTime": "23:59"
+    }
+  ],
+  "categories": [
+    {
+      "id": "social",
+      "name": "Social",
+      "enabled": true,
+      "sites": [
+        "x.com",
+        "twitter.com",
+        "facebook.com",
+        "instagram.com",
+        "reddit.com",
+        "linkedin.com",
+        "threads.net",
+        "tiktok.com"
+      ]
+    },
+    {
+      "id": "video",
+      "name": "Video",
+      "enabled": true,
+      "sites": [
+        "youtube.com",
+        "twitch.tv",
+        "netflix.com",
+        "hulu.com",
+        "disneyplus.com",
+        "primevideo.com"
+      ]
+    },
+    {
+      "id": "news",
+      "name": "News",
+      "enabled": false,
+      "sites": ["news.google.com", "cnn.com", "foxnews.com", "nytimes.com", "bbc.com"]
+    }
+  ],
+  "customSites": [],
+  "maxBypasses": 3,
+  "bypassDurationMinutes": 5,
+  "blockState": {
+    "isBlocking": false,
+    "manualOverride": null,
+    "pausedUntil": null,
+    "activeSchedule": null
+  },
+  "bypassState": {
+    "quickBypassesUsed": 0,
+    "lastResetDate": "2026-10-05",
+    "activeBypass": null,
+    "lastEmergencyRefresh": null
+  },
+  "stats": {
+    "date": "2026-10-05",
+    "blocksTriggered": 0,
+    "bypassesUsed": 0,
+    "siteStats": {}
+  },
+  "weeklyStats": {
+    "weekStart": "2026-10-05",
+    "days": [],
+    "siteStats": {},
+    "emergencyRefreshesUsed": 0
+  }
+}

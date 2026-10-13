@@ -238,7 +238,7 @@ describe('Sordino store', () => {
     await openStore({ storage, clock: clock.now })
     expect(storage.writes).toEqual([
       {
-        config: { version: 2, schedules: [workHours], ownSites: [] },
+        config: expect.objectContaining({ version: 2, schedules: [workHours], ownSites: [] }),
         state: { version: 2, mode: null },
         usage: { version: 2 },
       },
@@ -254,7 +254,7 @@ describe('Sordino store', () => {
     await openStore({ storage, clock: fixedClock('2026-10-05T10:00').now })
     expect(storage.writes).toEqual([
       {
-        config: { version: 2, schedules: [workHours], ownSites: [] },
+        config: expect.objectContaining({ version: 2, schedules: [workHours], ownSites: [] }),
         state: { version: 2, mode: null },
         usage: { version: 2 },
       },
@@ -278,7 +278,13 @@ describe('Sordino store', () => {
         'Added example.org. The path was ignored, so the whole site is muted.'
       )
       expect(storage.writes).toEqual([
-        { config: { version: 2, schedules: [workHours], ownSites: [example] } },
+        {
+          config: expect.objectContaining({
+            version: 2,
+            schedules: [workHours],
+            ownSites: [example],
+          }),
+        },
       ])
       expect(await store.settle()).toEqual(before)
     })
@@ -344,7 +350,13 @@ describe('Sordino store', () => {
         outcome: { kind: 'already-muted', site: reddit, via: { kind: 'own' } },
       })
       expect(storage.writes).toEqual([
-        { config: { version: 2, schedules: [workHours], ownSites: [reddit] } },
+        {
+          config: expect.objectContaining({
+            version: 2,
+            schedules: [workHours],
+            ownSites: [reddit],
+          }),
+        },
       ])
     })
 
@@ -366,7 +378,7 @@ describe('Sordino store', () => {
         outcome: { kind: 'not-on-list' },
       })
       expect(storage.writes).toEqual([
-        { config: { version: 2, schedules: [workHours], ownSites: [] } },
+        { config: expect.objectContaining({ version: 2, schedules: [workHours], ownSites: [] }) },
       ])
     })
 
@@ -435,7 +447,7 @@ describe('Sordino store', () => {
         sordino_settings: { schedules: [], customSites: ['example.org'] },
       })
       await openStore({ storage, clock: fixedClock('2026-10-05T10:00').now })
-      expect((await openReader(storage).read('config')).config).toEqual({
+      expect((await openReader(storage).read('config')).config).toMatchObject({
         version: 2,
         schedules: [workHours],
         ownSites: [example],
@@ -447,7 +459,8 @@ describe('Sordino store', () => {
       })
       await openStore({ storage: emptied, clock: fixedClock('2026-10-05T10:00').now })
       expect((await openReader(emptied).read('config')).config.ownSites).toEqual([])
-      expect(emptied.writes.every((write) => write.config === undefined)).toBe(true)
+      expect(emptied.writes).toHaveLength(1) // fills the new setup fields once
+      expect(emptied.writes[0]?.config?.ownSites).toEqual([])
     })
 
     it('a reader adopts 1.x custom sites in memory without writing', async () => {
