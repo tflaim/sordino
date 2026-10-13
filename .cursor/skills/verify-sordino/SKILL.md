@@ -22,22 +22,37 @@ the way a user would, capture evidence, and clean up. Read
 From the repo root, with dependencies installed:
 
 ```bash
+npm install
 npm run build:chrome
-# optional once per machine: npx playwright install chromium
+# once per machine — uses the Playwright version pinned in package.json (currently
+# 1.56.1). Do NOT run bare `npx playwright install` (that can pull a newer CLI):
+node .cursor/skills/verify-sordino/scripts/install-chromium.mjs
 ```
+
+`install-chromium.mjs` runs the local `node_modules/playwright` CLI and fails
+after 4 minutes (`SORDINO_PLAYWRIGHT_INSTALL_TIMEOUT_MS` to override) if the
+install stalls — on macOS this has hung for ~9 minutes while writing
+`Assets.car`. On timeout it prints a **manual-unzip workaround**: dry-run the
+pinned CLI for URLs/paths, `curl` the zip, `unzip` into the cache dir, `touch
+INSTALLATION_COMPLETE`, then re-run the helper.
 
 Start a disposable session (maps `www.reddit.com` to a local fake page by default —
 that host is in the Social category, so it mutes while muting is in effect):
 
 ```bash
 node .cursor/skills/verify-sordino/scripts/control-sordino.mjs launch --run-id demo
-# copy the printed export line:
-export SORDINO_VERIFY_DIR=/tmp/sordino-verify-demo
+# Copy and run the `export` field from launch's JSON stdout, e.g.
+#   "export": "export SORDINO_VERIFY_DIR=/var/folders/.../sordino-verify-demo"
+# On macOS the directory is under $TMPDIR, not necessarily /tmp. Do not hardcode
+# /tmp/sordino-verify-demo.
 ```
 
-Ready means the daemon printed `"event":"ready"`, `session.json` contains an
-`extensionId`, and `control-sordino doctor` returns `"ok": true` with that same
-id. A listening port alone is not enough — the service worker must answer.
+Launch stdout is a JSON object that includes `"ready": true` and the `export`
+line when the session is usable. The daemon also writes `"event":"ready"` to
+`$SORDINO_VERIFY_DIR/daemon.log` and `ready.json` — that string is **not** on
+launch stdout. Also require `session.json` to contain an `extensionId`, and
+`control-sordino doctor` to return `"ok": true` with that same id. A listening
+port alone is not enough — the service worker must answer.
 
 Teardown (keeps evidence; see Cleanup):
 
@@ -52,6 +67,7 @@ Env:
 | `SORDINO_VERIFY_DIR` | Session dir set by launch; required for later commands |
 | `CHROMIUM_PATH` | Optional full Chromium binary (not headless-shell) |
 | `HEADED=1` | Show the browser window |
+| `SORDINO_PLAYWRIGHT_INSTALL_TIMEOUT_MS` | Install helper timeout (default 240000) |
 
 Isolation: each launch gets its own Chromium user-data dir and HTTP port. Never
 drive a profile you did not start. Do not load the unpacked extension into the
@@ -138,6 +154,7 @@ launch.
 
 | Script | Invocation |
 |--------|------------|
+| Install Chromium (pinned) | `node .cursor/skills/verify-sordino/scripts/install-chromium.mjs` |
 | CLI | `node .cursor/skills/verify-sordino/scripts/control-sordino.mjs <command>` |
 | Daemon | started only by `launch`; do not run by hand |
 
@@ -148,3 +165,10 @@ end-to-end proof against the real UI.
 ## Feature map
 
 See [features/README.md](features/README.md).
+
+## Known gaps
+
+- **Firefox is not covered.** Launch and the smoke harness load the Chrome MV3
+  build (`.output/chrome-mv3`) into Chromium. There is no Firefox / `web-ext`
+  verification path in this skill yet — prove Chrome behavior only, or extend
+  the harness before claiming Firefox.

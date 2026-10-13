@@ -124,8 +124,13 @@ async function launch(args) {
     args['run-id'] ??
     process.env.SORDINO_RUN_ID ??
     `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  // An explicit --run-id always gets a fresh dir under the OS temp root ($TMPDIR
+  // on macOS, often /tmp on Linux). Do not reuse a leftover SORDINO_VERIFY_DIR
+  // from the shell when the caller asked for a new run id.
   const sessionDir = resolve(
-    process.env.SORDINO_VERIFY_DIR ?? join(tmpdir(), `sordino-verify-${runId}`)
+    args['run-id']
+      ? join(tmpdir(), `sordino-verify-${runId}`)
+      : (process.env.SORDINO_VERIFY_DIR ?? join(tmpdir(), `sordino-verify-${runId}`))
   )
   const artifactsDir = resolve(args.artifacts ?? join(DEFAULT_ARTIFACTS_ROOT, runId))
   const profileDir = mkdtempSync(join(tmpdir(), 'sordino-profile-'))

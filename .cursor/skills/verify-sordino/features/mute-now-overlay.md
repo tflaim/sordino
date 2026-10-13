@@ -35,7 +35,8 @@ Preconditions:
 - Outside Work hours, schedules alone will not mute — Mute now (or another
   active schedule) is required. This recipe always starts Mute now.
 - Headless-shell cannot load extensions; use Playwright's full Chromium channel
-  (the helper default) or `CHROMIUM_PATH` to a full build.
+  (the helper default) or `CHROMIUM_PATH` to a full build. Install browsers with
+  `install-chromium.mjs` (repo-pinned Playwright), not bare `npx playwright install`.
 - Host mapping only covers the host passed to launch. Visiting the real network
   host bypasses the fake server and may hang offline.
 - Overlay proof is `#sordino-overlay` attached, not merely `http://www.reddit.com/` loading.
