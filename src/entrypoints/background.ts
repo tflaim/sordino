@@ -1,7 +1,13 @@
 import { defineBackground } from 'wxt/utils/define-background'
 import { getSettings, updateSettings } from '@/shared/storage'
 import { decideMuting } from '@/shared/muting'
-import { matchMutedSite, parseMutedSite, type MutedList } from '@/shared/muted-sites'
+import {
+  COMMAND_FAILED,
+  matchMutedSite,
+  muteThisSiteNotice,
+  parseMutedSite,
+  type MutedList,
+} from '@/shared/muted-sites'
 import { clockTime } from '@/shared/status'
 import type { SordinoSettings, MessageType } from '@/shared/types'
 import { getLocalDateString, MAX_QUICK_BYPASSES } from '@/shared/types'
@@ -363,14 +369,23 @@ export default defineBackground(() => {
   reader.watch(['state'], () => void broadcastSettingsUpdate())
 
   // "Mute this site" adds the page through the same command. It does not start muting.
+  // Adding is quiet (the page is now muted). Already muted, refused, or a command
+  // that did not run uses the popup's sentence.
   const muteThisSite = 'mute-this-site'
   chrome.contextMenus.onClicked.addListener((info) => {
     if (info.menuItemId !== muteThisSite || !info.pageUrl) return
     const input = info.pageUrl
     void ready
       .then((store) => store.dispatch({ type: 'add-muted-site', input }, { kind: 'background' }))
-      .then(({ effects }) => applyEffects(effects))
-      .catch((error) => console.error('Sordino: Mute this site failed', error))
+      .then(({ result, effects }) => {
+        applyEffects(effects)
+        const message = muteThisSiteNotice(result)
+        if (message) notifyMuteThisSite(message)
+      })
+      .catch((error) => {
+        console.error('Sordino: Mute this site failed', error)
+        notifyMuteThisSite(COMMAND_FAILED)
+      })
   })
   chrome.contextMenus.create(
     {
@@ -381,6 +396,19 @@ export default defineBackground(() => {
     },
     () => void chrome.runtime.lastError // the id already exists after the first start
   )
+
+  function notifyMuteThisSite(message: string): void {
+    chrome.notifications.create(
+      muteThisSite,
+      {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
+        title: 'Sordino',
+        message,
+      },
+      () => void chrome.runtime.lastError
+    )
+  }
 
   // 1.x messages from the overlay and settings page, until their tickets
   // replace them with store commands.

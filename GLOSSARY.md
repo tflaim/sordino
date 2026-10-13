@@ -11,7 +11,7 @@ To place Sordino's overlay over a site on the user's list while muting is in eff
 _Avoid_: block, blocked, ban, lock
 
 **Muted site**:
-A site on the user's list, either from a category or added by hand.
+A site on the user's list, either from a category or added by hand. Its host is lowercase punycode: one leading `www.` is dropped only when a multi-label host remains (`www.reddit.com` is `reddit.com`; `www.com` stays), a single-label name is refused except `localhost`, and a leading `*.` is that same host because a host rule already covers its subdomains; credentials, a port, a path, a query and a hash are not part of the host.
 _Avoid_: blocked site, distraction, blacklist
 
 **Category**:

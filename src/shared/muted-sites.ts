@@ -9,7 +9,7 @@ export interface MutedSite {
 }
 
 /** Parts of an address that are not part of a host rule, so the whole site is muted. */
-export type DroppedPart = 'www' | 'port' | 'path' | 'query' | 'hash'
+export type DroppedPart = 'credentials' | 'wildcard' | 'www' | 'port' | 'path' | 'query' | 'hash'
 
 export type RefusalReason = 'empty' | 'not-a-site'
 
@@ -41,7 +41,8 @@ const SCHEME = /^([a-z][a-z0-9+.-]*):\/\//i
 
 /**
  * Turns typed or pasted text, or a page URL, into a canonical muted site.
- * Lowercase, punycode, no leading www, no port, path, query, hash or trailing dot.
+ * Lowercase, punycode, no leading `*.` or www, no credentials, port, path, query,
+ * hash or trailing dot. A host rule already covers subdomains, so `*.host` is `host`.
  */
 export function parseMutedSite(input: string): ParseResult {
   const trimmed = input.trim()
@@ -63,6 +64,8 @@ export function parseMutedSite(input: string): ParseResult {
   if (!host) return { ok: false, reason: 'not-a-site' }
 
   const dropped: DroppedPart[] = []
+  if (url.username || url.password) dropped.push('credentials')
+  if (host.droppedWildcard) dropped.push('wildcard')
   if (host.droppedWww) dropped.push('www')
   // `URL` omits the default port (:443 on https), so the port is read from the text too.
   if (url.port || explicitPort(trimmed)) dropped.push('port')
@@ -100,6 +103,21 @@ export function mutedSitesOnList(list: MutedList): MutedSite[] {
     if (!byId.has(site.id)) byId.set(site.id, site)
   }
   return [...byId.values()]
+}
+
+/** The sentence the popup shows when a command does not run. */
+export const COMMAND_FAILED = 'Sordino is restarting. Try again in a moment.'
+
+/**
+ * What "Mute this site" tells the user. Adding is quiet. Already muted, refused,
+ * or a command that did not run uses the popup's sentence.
+ */
+export function muteThisSiteNotice(
+  result: { ok: true; outcome: AddMutedSiteOutcome } | { ok: false }
+): string | null {
+  if (!result.ok) return COMMAND_FAILED
+  if (result.outcome.kind === 'added') return null
+  return addMutedSiteMessage(result.outcome)
 }
 
 /** What the popup and settings say about an add. */
@@ -220,17 +238,29 @@ function hostSite(host: string): MutedSite {
   return { id: host, rule: { kind: 'host', host } }
 }
 
-function canonicalHost(hostname: string): { host: string; droppedWww: boolean } | null {
+function canonicalHost(
+  hostname: string
+): { host: string; droppedWww: boolean; droppedWildcard: boolean } | null {
   let host = hostname.toLowerCase()
   while (host.endsWith('.')) host = host.slice(0, -1)
+  // A leading `*.` is the same host: a host rule already covers every subdomain.
+  let droppedWildcard = false
+  while (host.startsWith('*.')) {
+    host = host.slice(2)
+    droppedWildcard = true
+  }
   let droppedWww = false
   // Only a real "www" label, and only when a site remains (www.com stays www.com).
   if (host.startsWith('www.') && host.slice(4).includes('.')) {
     host = host.slice(4)
     droppedWww = true
+    while (host.startsWith('*.')) {
+      host = host.slice(2)
+      droppedWildcard = true
+    }
   }
   if (!isHost(host)) return null
-  return { host, droppedWww }
+  return { host, droppedWww, droppedWildcard }
 }
 
 function isHost(host: string): boolean {

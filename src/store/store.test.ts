@@ -286,7 +286,7 @@ describe('Sordino store', () => {
     it('refuses junk with a reason and writes nothing', async () => {
       const { popup, storage } = await setup()
 
-      for (const input of ['', '   ', 'not a site', '*.reddit.com', 'https://']) {
+      for (const input of ['', '   ', 'not a site', '*reddit.com', 'https://']) {
         const result = await popup.send({ type: 'add-muted-site', input })
         expect(result.ok).toBe(true)
         if (result.ok) expect(result.outcome.kind).toBe('refused')
@@ -335,9 +335,9 @@ describe('Sordino store', () => {
       })
       const reddit = { id: 'reddit.com', rule: { kind: 'host', host: 'reddit.com' } }
 
-      expect(await popup.send({ type: 'add-muted-site', input: 'Reddit.com' })).toEqual({
+      expect(await popup.send({ type: 'add-muted-site', input: '*.reddit.com' })).toEqual({
         ok: true,
-        outcome: { kind: 'added', site: reddit, dropped: [] },
+        outcome: { kind: 'added', site: reddit, dropped: ['wildcard'] },
       })
       expect(await popup.send({ type: 'add-muted-site', input: 'www.reddit.com/r/x' })).toEqual({
         ok: true,
@@ -640,5 +640,24 @@ describe('Sordino store', () => {
     })
     expect(await store.settle()).toContainEqual({ kind: 'badge', show: 'muting' })
     expect((await openReader(storage).read('config')).config.schedules).toEqual([workHours])
+  })
+
+  it('a removed own site is not adopted again when the store is reopened', async () => {
+    const storage = memoryStorage({
+      sordino_settings: { schedules: [workHours], customSites: ['example.org'] },
+    })
+    const clock = fixedClock('2026-10-05T10:00').now
+    const reader = openReader(storage)
+
+    await (
+      await openStore({ storage, clock })
+    ).dispatch({ type: 'remove-muted-site', id: 'example.org' }, page)
+    expect((await reader.read('config')).config.ownSites).toEqual([])
+
+    await openStore({ storage, clock })
+    expect((await reader.read('config')).config.ownSites).toEqual([])
+    expect((await storage.read(['sordino_settings'])).sordino_settings).toMatchObject({
+      customSites: ['example.org'],
+    })
   })
 })

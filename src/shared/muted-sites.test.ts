@@ -3,6 +3,7 @@ import {
   addMutedSiteMessage,
   alreadyMuted,
   matchMutedSite,
+  muteThisSiteNotice,
   mutedSitesOnList,
   parseMutedSite,
   type CategorySites,
@@ -33,7 +34,13 @@ describe('parse muted site', () => {
     ['https://münchen.de/path', munich, ['path']],
     ['XN--MNCHEN-3YA.DE', munich, []],
     ['WWW.Reddit.COM', reddit, ['www']],
-    ['https://user:pw@reddit.com:443/r/x?ref=1#top', reddit, ['port', 'path', 'query', 'hash']],
+    [
+      'https://user:pw@reddit.com:443/r/x?ref=1#top',
+      reddit,
+      ['credentials', 'port', 'path', 'query', 'hash'],
+    ],
+    ['*.reddit.com', reddit, ['wildcard']],
+    ['https://*.www.reddit.com/r/x', reddit, ['wildcard', 'www', 'path']],
     ['www.com', { id: 'www.com', rule: { kind: 'host', host: 'www.com' } }, []],
     ['localhost:3000', { id: 'localhost', rule: { kind: 'host', host: 'localhost' } }, ['port']],
   ] as const)('normalises %s', (input, site, dropped) => {
@@ -45,7 +52,7 @@ describe('parse muted site', () => {
     '   ',
     'not a site',
     'https://',
-    '*.reddit.com',
+    '*reddit.com',
     'javascript:alert(1)',
     'chrome://extensions',
     'ftp://files.example.org',
@@ -59,6 +66,25 @@ describe('parse muted site', () => {
     expect(result.ok).toBe(false)
     if (!result.ok) expect(['empty', 'not-a-site']).toContain(result.reason)
     expect(result.ok ? null : result.reason).toBe(input.trim() ? 'not-a-site' : 'empty')
+  })
+})
+
+describe('Mute this site notice', () => {
+  it('uses the popup sentence when the site is already muted or refused, and stays quiet when added', () => {
+    const via = { kind: 'category' as const, id: 'social', name: 'Social' }
+    const already = {
+      ok: true as const,
+      outcome: { kind: 'already-muted' as const, site: reddit, via },
+    }
+    expect(muteThisSiteNotice(already)).toBe(addMutedSiteMessage(already.outcome))
+    expect(muteThisSiteNotice(already)).toBe('already muted via Social')
+    expect(
+      muteThisSiteNotice({ ok: true, outcome: { kind: 'refused', reason: 'not-a-site' } })
+    ).toBe("That doesn't look like a site.")
+    expect(
+      muteThisSiteNotice({ ok: true, outcome: { kind: 'added', site: reddit, dropped: [] } })
+    ).toBeNull()
+    expect(muteThisSiteNotice({ ok: false })).toBe('Sordino is restarting. Try again in a moment.')
   })
 })
 
