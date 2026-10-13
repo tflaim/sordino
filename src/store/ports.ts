@@ -6,8 +6,8 @@ import type { ConfigDoc, StateDoc, UsageDoc } from './docs'
 
 /** The three versioned keys the store owns (decision 36). */
 export type StoredKey = 'config' | 'state' | 'usage'
-/** The 1.x settings object. Read-only: kept as rollback insurance, and until
- * schedules move into `config` (#7) the store reads them from here. */
+/** The 1.x settings object. Read-only, kept as rollback insurance. Schedules are
+ * copied into `config` when that doc has no schedule list yet. */
 export type LegacyKey = 'sordino_settings'
 export type StorageKey = StoredKey | LegacyKey
 

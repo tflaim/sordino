@@ -11,7 +11,7 @@ import {
 import { clockTime, statusLine } from '@/shared/status'
 import type { SordinoSettings } from '@/shared/types'
 import { MAX_QUICK_BYPASSES } from '@/shared/types'
-import { useNow, useSordinoState } from '@/shared/use-sordino-state'
+import { useNow, useSordinoConfig, useSordinoState } from '@/shared/use-sordino-state'
 import { cn } from '@/shared/utils'
 import { runtimeCommandPort } from '@/store/adapters/runtime'
 import type { Command } from '@/store/commands'
@@ -43,6 +43,7 @@ function formatTimeRemaining(ms: number): string {
 function App() {
   const [settings, setSettings] = useState<SordinoSettings | null>(null)
   const state = useSordinoState()
+  const config = useSordinoConfig()
   const now = useNow()
   const [problem, setProblem] = useState<string | null>(null)
   const [bypassTimeLeft, setBypassTimeLeft] = useState<number | null>(null)
@@ -71,7 +72,7 @@ function App() {
     return () => clearInterval(interval)
   }, [settings?.bypassState.activeBypass])
 
-  if (!settings || !state) {
+  if (!settings || !state || !config) {
     return (
       <div className="w-[340px] h-[420px] bg-background flex items-center justify-center">
         <div className="motion-safe:animate-pulse text-muted-foreground">Loading...</div>
@@ -79,7 +80,7 @@ function App() {
     )
   }
 
-  const muting = decideMuting(settings.schedules, state.mode, now)
+  const muting = decideMuting(config.schedules, state.mode, now)
   const running = runningMode(state.mode, now)
   const hasBypass = bypassTimeLeft !== null && settings.bypassState.activeBypass
 

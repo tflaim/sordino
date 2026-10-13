@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest'
+import { decideMuting } from '@/shared/muting'
+import type { DayOfWeek } from '@/shared/types'
+import {
+  SUGGESTED_SCHEDULES,
+  toScheduleDraft,
+  type Schedule,
+  type ScheduleDraft,
+} from '@/shared/schedule'
 import { directCommandPort } from './adapters/direct'
 import { memoryStorage } from './adapters/memory'
 import { openReader } from './reader'
 import { openStore } from './store'
 import type { Sender } from './commands'
-import type { Schedule } from '@/shared/types'
 
 // vitest.config.ts pins TZ=Europe/London. 2026-10-05 is a Monday.
 const at = (local: string) => new Date(local).getTime()
@@ -17,16 +24,25 @@ function fixedClock(local: string) {
   }
 }
 
-const workHours: Schedule = {
+const legacyWorkHours = {
   id: 'work-hours',
   name: 'Work hours',
   enabled: true,
-  days: ['mon', 'tue', 'wed', 'thu', 'fri'],
+  days: ['mon', 'tue', 'wed', 'thu', 'fri'] as DayOfWeek[],
   startTime: '09:00',
   endTime: '17:00',
 }
-// Until schedules move into `config` (#7), the store reads them from the 1.x key.
-const legacy = { sordino_settings: { schedules: [workHours] } }
+const workHours: Schedule = { ...legacyWorkHours, allDay: false, appliesTo: 'all' }
+const legacy = { sordino_settings: { schedules: [legacyWorkHours] } }
+
+const deepWork: ScheduleDraft = {
+  name: 'Deep work',
+  enabled: true,
+  days: ['sat'],
+  allDay: false,
+  startTime: '10:00',
+  endTime: '12:00',
+}
 
 const page: Sender = { kind: 'page' }
 const tab: Sender = { kind: 'tab', tabId: 7, url: 'https://www.reddit.com/' }
@@ -145,6 +161,10 @@ describe('Sordino store', () => {
       { type: 'pause', length: 'forever' },
       { type: 'pause' },
       { type: 'update-settings', settings: {} },
+      { type: 'save-schedule' },
+      { type: 'save-schedule', schedule: null },
+      { type: 'delete-schedule' },
+      { type: 'delete-schedule', id: '  ' },
       null,
     ]) {
       const { result } = await store.dispatch(command as never, page)
@@ -214,7 +234,11 @@ describe('Sordino store', () => {
 
     await openStore({ storage, clock: clock.now })
     expect(storage.writes).toEqual([
-      { config: { version: 2 }, state: { version: 2, mode: null }, usage: { version: 2 } },
+      {
+        config: { version: 2, schedules: [workHours] },
+        state: { version: 2, mode: null },
+        usage: { version: 2 },
+      },
     ])
 
     await openStore({ storage, clock: clock.now })
@@ -226,7 +250,193 @@ describe('Sordino store', () => {
 
     await openStore({ storage, clock: fixedClock('2026-10-05T10:00').now })
     expect(storage.writes).toEqual([
-      { config: { version: 2 }, state: { version: 2, mode: null }, usage: { version: 2 } },
+      {
+        config: { version: 2, schedules: [workHours] },
+        state: { version: 2, mode: null },
+        usage: { version: 2 },
+      },
     ])
+  })
+
+  it('copies 1.x schedules into config, and a later edit of the 1.x key does not change them', async () => {
+    const storage = memoryStorage({
+      config: { version: 2 },
+      sordino_settings: {
+        schedules: [
+          {
+            id: 'always-on',
+            name: 'Always on',
+            enabled: true,
+            days: ['mon'],
+            startTime: '00:00',
+            endTime: '23:59',
+          },
+        ],
+      },
+    })
+    const store = await openStore({ storage, clock: fixedClock('2026-10-05T23:59:30').now })
+    const reader = openReader(storage)
+
+    const { config } = await reader.read('config')
+    expect(config.schedules).toEqual([
+      {
+        id: 'always-on',
+        name: 'Always on',
+        enabled: true,
+        days: ['mon'],
+        allDay: true,
+        startTime: '00:00',
+        endTime: '23:59',
+        appliesTo: 'all',
+      },
+    ])
+    expect(decideMuting(config.schedules, null, at('2026-10-05T23:59:30'))).toMatchObject({
+      muted: true,
+      until: at('2026-10-06T00:00'),
+    })
+
+    storage.seed({ sordino_settings: { schedules: [] } })
+    expect(await store.settle()).toContainEqual({ kind: 'badge', show: 'muting' })
+    expect((await reader.read('config')).config.schedules).toHaveLength(1)
+  })
+
+  it('a reader migrates 1.x schedules in memory without writing', async () => {
+    const storage = memoryStorage(legacy)
+    const { config } = await openReader(storage).read('config')
+    expect(config.schedules).toEqual([workHours])
+    expect(storage.writes).toEqual([])
+  })
+
+  it('an empty schedule list stays empty, and is not refilled from the 1.x key', async () => {
+    const storage = memoryStorage({
+      config: { version: 2, schedules: [] },
+      ...legacy,
+    })
+    const store = await openStore({ storage, clock: fixedClock('2026-10-05T10:00').now })
+    expect((await openReader(storage).read('config')).config.schedules).toEqual([])
+    expect(await store.settle()).toEqual([
+      { kind: 'badge', show: 'off' },
+      { kind: 'alarms', at: [] },
+    ])
+  })
+
+  it('seeds the suggested schedules when nothing is stored, and they can be edited and deleted', async () => {
+    const storage = memoryStorage()
+    const clock = fixedClock('2026-10-05T10:00')
+    const store = await openStore({ storage, clock: clock.now })
+    expect((await openReader(storage).read('config')).config.schedules).toEqual(SUGGESTED_SCHEDULES)
+
+    const suggestedWork = SUGGESTED_SCHEDULES.find((s) => s.id === 'work-hours')
+    const edited = await store.dispatch(
+      {
+        type: 'save-schedule',
+        schedule: { ...toScheduleDraft(suggestedWork!), endTime: '12:00' },
+      },
+      page
+    )
+    expect(edited.result).toMatchObject({
+      ok: true,
+      outcome: { kind: 'saved', schedule: { id: 'work-hours', endTime: '12:00' } },
+    })
+    expect(await store.settle()).toEqual([
+      { kind: 'badge', show: 'muting' },
+      { kind: 'alarms', at: [{ name: 'muting-change', when: at('2026-10-05T12:00') }] },
+    ])
+
+    expect(await store.dispatch({ type: 'delete-schedule', id: 'work-hours' }, page)).toEqual({
+      result: { ok: true, outcome: { kind: 'deleted' } },
+      effects: [
+        { kind: 'badge', show: 'off' },
+        { kind: 'alarms', at: [] },
+      ],
+    })
+    const reopened = await openStore({ storage, clock: clock.now })
+    expect(
+      (await openReader(storage).read('config')).config.schedules.map((s) => s.id)
+    ).not.toContain('work-hours')
+    expect(await reopened.settle()).toContainEqual({ kind: 'badge', show: 'off' })
+  })
+
+  it('refuses a schedule that can never run, and writes nothing', async () => {
+    const { popup, storage } = await setup('2026-10-05T10:00')
+
+    expect(
+      await popup.send({
+        type: 'save-schedule',
+        schedule: {
+          name: '   ',
+          enabled: true,
+          days: [],
+          allDay: false,
+          startTime: '',
+          endTime: '09:00',
+        },
+      })
+    ).toEqual({
+      ok: true,
+      outcome: { kind: 'refused', reasons: ['blank-name', 'no-days', 'missing-time'] },
+    })
+    expect(
+      await popup.send({
+        type: 'save-schedule',
+        schedule: { ...deepWork, startTime: '10:00', endTime: '10:00' },
+      })
+    ).toEqual({ ok: true, outcome: { kind: 'refused', reasons: ['start-equals-end'] } })
+    expect(storage.writes).toEqual([])
+  })
+
+  it('saves a new schedule, treats a repeat as unchanged, and deletes it', async () => {
+    const { popup, storage } = await setup('2026-10-05T10:00')
+
+    const saved = await popup.send({ type: 'save-schedule', schedule: deepWork })
+    expect(saved).toMatchObject({
+      ok: true,
+      outcome: { kind: 'saved', schedule: { name: 'Deep work' } },
+    })
+    const id = saved.ok && saved.outcome.kind === 'saved' ? saved.outcome.schedule.id : ''
+    expect(id).toMatch(/^[0-9a-f-]{36}$/)
+
+    expect(await popup.send({ type: 'save-schedule', schedule: { ...deepWork, id } })).toEqual({
+      ok: true,
+      outcome: { kind: 'unchanged' },
+    })
+    expect(storage.writes).toHaveLength(1)
+
+    expect(await popup.send({ type: 'delete-schedule', id })).toEqual({
+      ok: true,
+      outcome: { kind: 'deleted' },
+    })
+    expect(await popup.send({ type: 'delete-schedule', id })).toEqual({
+      ok: true,
+      outcome: { kind: 'missing' },
+    })
+    expect(storage.writes).toHaveLength(2)
+  })
+
+  it('refuses Save schedule and Delete schedule from a content script, without running them', async () => {
+    const { store, storage } = await setup('2026-10-05T10:00')
+
+    for (const command of [
+      { type: 'save-schedule' as const, schedule: deepWork },
+      { type: 'delete-schedule' as const, id: 'work-hours' },
+    ]) {
+      expect(await store.dispatch(command, tab)).toEqual({
+        result: { ok: false, error: { code: 'not-allowed', detail: expect.any(String) } },
+        effects: [],
+      })
+    }
+    expect(storage.writes).toEqual([])
+  })
+
+  it('a failed schedule write leaves the list as it was', async () => {
+    const { store, storage } = await setup('2026-10-05T10:00')
+    storage.failNextWrite()
+
+    expect(await store.dispatch({ type: 'delete-schedule', id: 'work-hours' }, page)).toEqual({
+      result: { ok: false, error: { code: 'storage-failed', detail: expect.any(String) } },
+      effects: [],
+    })
+    expect(await store.settle()).toContainEqual({ kind: 'badge', show: 'muting' })
+    expect((await openReader(storage).read('config')).config.schedules).toEqual([workHours])
   })
 })

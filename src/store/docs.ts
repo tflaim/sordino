@@ -1,12 +1,14 @@
 // The three stored documents and how raw storage values become them.
 // Unversioned data is v1 (the 1.x `sordino_settings` key); these are v2.
 import type { Mode } from '@/shared/muting'
+import { schedulesFromConfig, schedulesFromLegacy, type Schedule } from '@/shared/schedule'
 
 export const VERSION = 2
 
-/** Sites, schedules, bypass options, own line, Stillness: filled in by later tickets. */
+/** Sites, bypass options, own line and Stillness are filled in by later tickets. */
 export interface ConfigDoc {
   version: typeof VERSION
+  schedules: Schedule[]
 }
 
 /** What is happening now: the latest Mute now or Pause (null = on schedule). */
@@ -20,8 +22,19 @@ export interface UsageDoc {
   version: typeof VERSION
 }
 
-// No fields yet, so any stored value parses to the current, empty doc.
-export const parseConfig = (): ConfigDoc => ({ version: VERSION })
+/**
+ * `config.schedules` is the list, even when empty (the user deleted them).
+ * A config with no list yet is v1, or the empty config written before schedules
+ * moved: take the 1.x list, or the suggested schedules when there isn't one.
+ */
+export function resolveConfig(rawConfig: unknown, legacySettings: unknown): ConfigDoc {
+  if (isRecord(rawConfig) && Array.isArray(rawConfig.schedules)) {
+    return { version: VERSION, schedules: schedulesFromConfig(rawConfig.schedules) }
+  }
+  return { version: VERSION, schedules: schedulesFromLegacy(legacySettings) }
+}
+
+export const parseConfig = (raw: unknown): ConfigDoc => resolveConfig(raw, undefined)
 
 export const parseUsage = (): UsageDoc => ({ version: VERSION })
 

@@ -5,15 +5,6 @@ export const MAX_QUICK_BYPASSES = 3
 export const BYPASS_DURATION_MS = 5 * 60 * 1000 // 5 minutes
 export const CONFIRM_RESET_MS = 8000 // shared timeout for both delete-confirm and bypass-confirm armed states; 8s leaves slack for ADHD-primary attention drifts
 
-export interface Schedule {
-  id: string
-  name: string
-  enabled: boolean
-  days: DayOfWeek[]
-  startTime: string // "09:00" (24h format)
-  endTime: string // "17:00"
-}
-
 export interface Category {
   id: string
   name: string
@@ -64,8 +55,8 @@ export interface Stats {
   siteStats: SiteStats // Per-site tracking for today
 }
 
+/** 1.x settings blob. Schedules are not on it; they live on the store's config. */
 export interface SordinoSettings {
-  schedules: Schedule[]
   categories: Category[]
   customSites: string[]
   maxBypasses: number // default 3, range 1-10
@@ -115,41 +106,6 @@ export const DEFAULT_CATEGORIES: Category[] = [
   },
 ]
 
-export const DEFAULT_SCHEDULES: Schedule[] = [
-  {
-    id: 'work-hours',
-    name: 'Work hours',
-    enabled: true,
-    days: ['mon', 'tue', 'wed', 'thu', 'fri'],
-    startTime: '09:00',
-    endTime: '17:00',
-  },
-  {
-    id: 'extended-work',
-    name: 'Extended work',
-    enabled: false,
-    days: ['mon', 'tue', 'wed', 'thu', 'fri'],
-    startTime: '08:00',
-    endTime: '18:00',
-  },
-  {
-    id: 'evenings',
-    name: 'Evenings',
-    enabled: false,
-    days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
-    startTime: '18:00',
-    endTime: '22:00',
-  },
-  {
-    id: 'always-on',
-    name: 'Always on',
-    enabled: false,
-    days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'],
-    startTime: '00:00',
-    endTime: '23:59',
-  },
-]
-
 // Get local date string in YYYY-MM-DD format (uses local timezone, not UTC)
 export function getLocalDateString(date: Date = new Date()): string {
   return date.toLocaleDateString('en-CA') // en-CA gives YYYY-MM-DD format
@@ -166,7 +122,6 @@ function getWeekStart(): string {
 }
 
 export const DEFAULT_SETTINGS: SordinoSettings = {
-  schedules: DEFAULT_SCHEDULES,
   categories: DEFAULT_CATEGORIES,
   customSites: [],
   maxBypasses: 3,
@@ -198,9 +153,6 @@ export const DEFAULT_SETTINGS: SordinoSettings = {
   onboardingDismissed: false,
   scaffoldingMode: false,
 }
-
-// Template schedule IDs that cannot be edited or deleted
-export const TEMPLATE_SCHEDULE_IDS = ['work-hours', 'extended-work', 'evenings', 'always-on']
 
 // Message types for communication between components
 export type MessageType =
