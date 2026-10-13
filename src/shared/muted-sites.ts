@@ -53,9 +53,12 @@ export function parseMutedSite(input: string): ParseResult {
     return { ok: false, reason: 'not-a-site' }
   }
 
+  // Chromium's URL parser percent-encodes `*` (`*.host` becomes hostname `%2A.host`),
+  // and `%` is not a host label. Drop a leading `*.` before parsing. Node keeps the `*`.
+  const stripped = stripLeadingWildcard(trimmed)
   let url: URL
   try {
-    url = new URL(scheme ? trimmed : `https://${trimmed}`)
+    url = new URL(scheme ? stripped.text : `https://${stripped.text}`)
   } catch {
     return { ok: false, reason: 'not-a-site' }
   }
@@ -65,7 +68,7 @@ export function parseMutedSite(input: string): ParseResult {
 
   const dropped: DroppedPart[] = []
   if (url.username || url.password) dropped.push('credentials')
-  if (host.droppedWildcard) dropped.push('wildcard')
+  if (stripped.droppedWildcard || host.droppedWildcard) dropped.push('wildcard')
   if (host.droppedWww) dropped.push('www')
   // `URL` omits the default port (:443 on https), so the port is read from the text too.
   if (url.port || explicitPort(trimmed)) dropped.push('port')
@@ -238,15 +241,36 @@ function hostSite(host: string): MutedSite {
   return { id: host, rule: { kind: 'host', host } }
 }
 
+/**
+ * A leading `*.` on the host is the same host: a host rule already covers its
+ * subdomains. Removed here so `URL` never sees the star.
+ */
+function stripLeadingWildcard(input: string): { text: string; droppedWildcard: boolean } {
+  const scheme = input.match(SCHEME)?.[0] ?? ''
+  const rest = input.slice(scheme.length)
+  const cut = rest.search(/[/?#]/)
+  const authority = cut === -1 ? rest : rest.slice(0, cut)
+  const tail = cut === -1 ? '' : rest.slice(cut)
+  const at = authority.lastIndexOf('@')
+  const userinfo = at === -1 ? '' : authority.slice(0, at + 1)
+  let hostport = at === -1 ? authority : authority.slice(at + 1)
+  let droppedWildcard = false
+  while (hostport.toLowerCase().startsWith('*.')) {
+    hostport = hostport.slice(2)
+    droppedWildcard = true
+  }
+  return { text: scheme + userinfo + hostport + tail, droppedWildcard }
+}
+
 function canonicalHost(
   hostname: string
 ): { host: string; droppedWww: boolean; droppedWildcard: boolean } | null {
   let host = hostname.toLowerCase()
   while (host.endsWith('.')) host = host.slice(0, -1)
-  // A leading `*.` is the same host: a host rule already covers every subdomain.
+  // A star that survived parsing (`*.`, or Chromium's `%2A.`) is still that host.
   let droppedWildcard = false
-  while (host.startsWith('*.')) {
-    host = host.slice(2)
+  while (host.startsWith('*.') || host.startsWith('%2a.')) {
+    host = host.startsWith('*.') ? host.slice(2) : host.slice(4)
     droppedWildcard = true
   }
   let droppedWww = false
@@ -254,8 +278,8 @@ function canonicalHost(
   if (host.startsWith('www.') && host.slice(4).includes('.')) {
     host = host.slice(4)
     droppedWww = true
-    while (host.startsWith('*.')) {
-      host = host.slice(2)
+    while (host.startsWith('*.') || host.startsWith('%2a.')) {
+      host = host.startsWith('*.') ? host.slice(2) : host.slice(4)
       droppedWildcard = true
     }
   }

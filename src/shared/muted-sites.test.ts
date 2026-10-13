@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   addMutedSiteMessage,
   alreadyMuted,
@@ -66,6 +66,45 @@ describe('parse muted site', () => {
     expect(result.ok).toBe(false)
     if (!result.ok) expect(['empty', 'not-a-site']).toContain(result.reason)
     expect(result.ok ? null : result.reason).toBe(input.trim() ? 'not-a-site' : 'empty')
+  })
+
+  it('strips a leading *. before URL parsing, including when URL encodes the star as Chromium does', () => {
+    const RealURL = globalThis.URL
+    const constructed: string[] = []
+    class ChromiumURL extends RealURL {
+      constructor(url: string | URL, base?: string | URL) {
+        const text = typeof url === 'string' ? url : url.href
+        constructed.push(text)
+        if (base === undefined) super(text)
+        else super(text, base)
+      }
+      override get hostname() {
+        return super.hostname.replaceAll('*', '%2A')
+      }
+    }
+    vi.stubGlobal('URL', ChromiumURL)
+    try {
+      const neverssl = { id: 'neverssl.com', rule: { kind: 'host', host: 'neverssl.com' } }
+      const example = { id: 'example.org', rule: { kind: 'host', host: 'example.org' } }
+      expect(parseMutedSite('*.neverssl.com')).toEqual({
+        ok: true,
+        site: neverssl,
+        dropped: ['wildcard'],
+      })
+      expect(parseMutedSite('*.example.org')).toEqual({
+        ok: true,
+        site: example,
+        dropped: ['wildcard'],
+      })
+      expect(parseMutedSite('https://user:pw@*.example.org:443/a?q=1#h')).toEqual({
+        ok: true,
+        site: example,
+        dropped: ['credentials', 'wildcard', 'port', 'path', 'query', 'hash'],
+      })
+      expect(constructed.every((text) => !text.includes('*'))).toBe(true)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
 
