@@ -21,7 +21,7 @@ export default defineConfig({
     action: {
       default_icon: { 16: icons[16], 32: icons[32], 48: icons[48] },
     },
-    permissions: ['storage', 'alarms'],
+    permissions: ['storage', 'alarms', 'contextMenus', 'notifications'],
     host_permissions: ['<all_urls>'],
     content_security_policy: {
       extension_pages: "script-src 'self'; object-src 'none'",

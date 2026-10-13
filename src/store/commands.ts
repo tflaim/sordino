@@ -2,6 +2,7 @@
 // A new command touches four places here and one in store.ts: `Command`,
 // `OutcomeMap`, `SENDERS`, `parseCommand`, and its handler.
 import { LENGTHS, type Length } from '@/shared/muting'
+import type { AddMutedSiteOutcome, MutedSite } from '@/shared/muted-sites'
 import {
   coerceScheduleDraft,
   type Schedule,
@@ -16,6 +17,8 @@ export type Command =
   | { type: 'back-to-schedule' }
   | { type: 'save-schedule'; schedule: ScheduleDraft }
   | { type: 'delete-schedule'; id: string }
+  | { type: 'add-muted-site'; input: string }
+  | { type: 'remove-muted-site'; id: string }
 
 export interface OutcomeMap {
   'mute-now': { kind: 'muting'; until: number }
@@ -26,6 +29,8 @@ export interface OutcomeMap {
     | { kind: 'unchanged' }
     | { kind: 'refused'; reasons: ScheduleReason[] }
   'delete-schedule': { kind: 'deleted' } | { kind: 'missing' }
+  'add-muted-site': AddMutedSiteOutcome
+  'remove-muted-site': { kind: 'removed'; site: MutedSite } | { kind: 'not-on-list' }
 }
 
 export type Outcome<C extends Command> = OutcomeMap[C['type']]
@@ -58,6 +63,8 @@ const SENDERS: { [T in Command['type']]: 'extension' } = {
   'back-to-schedule': 'extension',
   'save-schedule': 'extension',
   'delete-schedule': 'extension',
+  'add-muted-site': 'extension',
+  'remove-muted-site': 'extension',
 }
 
 export function mayRun(command: Command, sender: Sender): boolean {
@@ -83,6 +90,10 @@ export function parseCommand(raw: unknown): Command | null {
       return typeof raw.id === 'string' && raw.id.trim()
         ? { type: 'delete-schedule', id: raw.id.trim() }
         : null
+    case 'add-muted-site':
+      return typeof raw.input === 'string' ? { type: 'add-muted-site', input: raw.input } : null
+    case 'remove-muted-site':
+      return typeof raw.id === 'string' ? { type: 'remove-muted-site', id: raw.id } : null
     default:
       return null
   }

@@ -9,12 +9,16 @@ import { getLocalDateString, MAX_QUICK_BYPASSES } from '@/shared/types'
 import { cn } from '@/shared/utils'
 import { decideMuting, mutingShow } from '@/shared/muting'
 import { statusLine } from '@/shared/status'
+import { addMutedSiteMessage } from '@/shared/muted-sites'
 import { useNow, useSordinoConfig, useSordinoState } from '@/shared/use-sordino-state'
+import { runtimeCommandPort } from '@/store/adapters/runtime'
 import { SchedulesSection } from './Schedules'
 import { Plus, X, Check, ChevronDown, RefreshCw, BarChart3, Settings, Activity } from 'lucide-react'
 import logoUrl from '@/assets/logo.png'
 
 type Tab = 'settings' | 'usage'
+
+const sordino = runtimeCommandPort()
 
 function App() {
   const [settings, setSettings] = useState<SordinoSettings | null>(null)
@@ -97,7 +101,7 @@ function App() {
 
             {/* Blocked Sites Section */}
             <section className="mb-10">
-              <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Blocked Sites</h2>
+              <h2 className="font-serif text-xl font-medium mb-4 text-foreground">Muted sites</h2>
 
               {/* Categories */}
               <div className="mb-6">
@@ -130,46 +134,7 @@ function App() {
                 </div>
               </div>
 
-              {/* Custom Sites */}
-              <div>
-                <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-3">
-                  Custom Sites
-                </h3>
-                <div className="space-y-2 mb-3">
-                  {settings.customSites.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No custom sites added.</p>
-                  ) : (
-                    settings.customSites.map((site) => (
-                      <div
-                        key={site}
-                        className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-secondary/30 border border-border/50"
-                      >
-                        <span className="text-sm">{site}</span>
-                        <button
-                          onClick={() => {
-                            updateSettings((s) => ({
-                              ...s,
-                              customSites: s.customSites.filter((siteName) => siteName !== site),
-                            }))
-                          }}
-                          className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors duration-150 ease-out"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <AddSiteInput
-                  onAdd={(site) => {
-                    updateSettings((s) => ({
-                      ...s,
-                      customSites: [...s.customSites, site],
-                    }))
-                  }}
-                  existingSites={settings.customSites}
-                />
-              </div>
+              <AddedSites />
             </section>
 
             {/* Bypass Settings Section */}
@@ -470,9 +435,7 @@ function CategoryCard({
                 )
               })}
             </div>
-            <p className="text-xs text-muted-foreground mt-3">
-              Add more sites in Custom Sites below
-            </p>
+            <p className="text-xs text-muted-foreground mt-3">Add a site by hand below</p>
           </div>
         </div>
       </div>
@@ -480,36 +443,58 @@ function CategoryCard({
   )
 }
 
-function AddSiteInput({
-  onAdd,
-  existingSites,
-}: {
-  onAdd: (site: string) => void
-  existingSites: string[]
-}) {
+function AddedSites() {
+  const config = useSordinoConfig()
+  const ownSites = config?.ownSites ?? []
+
+  return (
+    <div>
+      <h3 className="text-sm font-medium uppercase tracking-wider text-muted-foreground mb-3">
+        Added by hand
+      </h3>
+      <div className="space-y-2 mb-3">
+        {config === null ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : ownSites.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No sites added by hand.</p>
+        ) : (
+          ownSites.map((site) => (
+            <div
+              key={site.id}
+              className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-secondary/30 border border-border/50"
+            >
+              <span className="text-sm">{site.rule.host}</span>
+              <button
+                onClick={() => void sordino.send({ type: 'remove-muted-site', id: site.id })}
+                className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors duration-150 ease-out"
+                aria-label={`Remove ${site.rule.host}`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+      <AddSiteInput />
+    </div>
+  )
+}
+
+function AddSiteInput() {
   const [site, setSite] = useState('')
-  const [error, setError] = useState('')
+  const [notice, setNotice] = useState<{ text: string; problem: boolean } | null>(null)
 
-  const handleAdd = () => {
-    const cleanSite = site
-      .trim()
-      .replace(/^https?:\/\//, '')
-      .replace(/^www\./, '')
-      .split('/')[0]
-
-    if (!cleanSite) {
-      setError('Please enter a site')
+  const handleAdd = async () => {
+    const result = await sordino.send({ type: 'add-muted-site', input: site })
+    if (!result.ok) {
+      setNotice({ text: 'Sordino is restarting. Try again in a moment.', problem: true })
       return
     }
-
-    if (existingSites.includes(cleanSite)) {
-      setError('Site already added')
-      return
-    }
-
-    onAdd(cleanSite)
-    setSite('')
-    setError('')
+    if (result.outcome.kind === 'added') setSite('')
+    setNotice({
+      text: addMutedSiteMessage(result.outcome),
+      problem: result.outcome.kind === 'refused',
+    })
   }
 
   return (
@@ -520,21 +505,33 @@ function AddSiteInput({
           value={site}
           onChange={(e) => {
             setSite(e.target.value)
-            setError('')
+            setNotice(null)
           }}
-          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void handleAdd()
+          }}
           placeholder="example.com"
           className="flex-1 px-4 py-2.5 rounded-lg bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
         />
         <button
-          onClick={handleAdd}
+          onClick={() => void handleAdd()}
           className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors duration-150 ease-out"
         >
           <Plus className="w-4 h-4" />
           Add
         </button>
       </div>
-      {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+      {notice && (
+        <p
+          role="status"
+          className={cn(
+            'mt-2 text-sm',
+            notice.problem ? 'text-destructive' : 'text-muted-foreground'
+          )}
+        >
+          {notice.text}
+        </p>
+      )}
     </div>
   )
 }

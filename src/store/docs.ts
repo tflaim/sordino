@@ -1,14 +1,17 @@
 // The three stored documents and how raw storage values become them.
 // Unversioned data is v1 (the 1.x `sordino_settings` key); these are v2.
 import type { Mode } from '@/shared/muting'
+import { adoptInputs, storedMutedSite, type MutedSite } from '@/shared/muted-sites'
 import { schedulesFromConfig, schedulesFromLegacy, type Schedule } from '@/shared/schedule'
+import { legacyCategories, legacyCustomSites } from './legacy-sites'
 
 export const VERSION = 2
 
-/** Sites, bypass options, own line and Stillness are filled in by later tickets. */
+/** Schedules and sites added by hand. Bypass options, own line and Stillness come later. */
 export interface ConfigDoc {
   version: typeof VERSION
   schedules: Schedule[]
+  ownSites: MutedSite[]
 }
 
 /** What is happening now: the latest Mute now or Pause (null = on schedule). */
@@ -23,18 +26,42 @@ export interface UsageDoc {
 }
 
 /**
- * `config.schedules` is the list, even when empty (the user deleted them).
- * A config with no list yet is v1, or the empty config written before schedules
- * moved: take the 1.x list, or the suggested schedules when there isn't one.
+ * Each list on `config` is the list, even when empty (the user deleted it).
+ * A missing `schedules` array is v1, or a config written before schedules moved:
+ * take the 1.x list, or the suggested schedules when there isn't one.
+ * A missing `ownSites` array takes the 1.x custom list (junk dropped, sites an
+ * enabled category already mutes skipped). An empty array is not filled again.
  */
 export function resolveConfig(rawConfig: unknown, legacySettings: unknown): ConfigDoc {
-  if (isRecord(rawConfig) && Array.isArray(rawConfig.schedules)) {
-    return { version: VERSION, schedules: schedulesFromConfig(rawConfig.schedules) }
+  const record = isRecord(rawConfig) ? rawConfig : null
+  return {
+    version: VERSION,
+    schedules:
+      record && Array.isArray(record.schedules)
+        ? schedulesFromConfig(record.schedules)
+        : schedulesFromLegacy(legacySettings),
+    ownSites:
+      record && Array.isArray(record.ownSites)
+        ? parseOwnSites(record.ownSites)
+        : adoptInputs(legacyCustomSites(legacySettings), {
+            categories: legacyCategories(legacySettings),
+            ownSites: [],
+          }),
   }
-  return { version: VERSION, schedules: schedulesFromLegacy(legacySettings) }
 }
 
 export const parseConfig = (raw: unknown): ConfigDoc => resolveConfig(raw, undefined)
+
+/** Repairs field by field: a malformed own site is dropped, the rest is kept. */
+function parseOwnSites(raw: unknown): MutedSite[] {
+  if (!Array.isArray(raw)) return []
+  const sites: MutedSite[] = []
+  for (const item of raw) {
+    const site = storedMutedSite(item)
+    if (site && !sites.some((kept) => kept.id === site.id)) sites.push(site)
+  }
+  return sites
+}
 
 export const parseUsage = (): UsageDoc => ({ version: VERSION })
 

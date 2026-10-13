@@ -1,14 +1,79 @@
 import { defineBackground } from 'wxt/utils/define-background'
 import { getSettings, updateSettings } from '@/shared/storage'
 import { decideMuting } from '@/shared/muting'
+import {
+  COMMAND_FAILED,
+  matchMutedSite,
+  parseMutedSite,
+  type MutedList,
+} from '@/shared/muted-sites'
 import { clockTime } from '@/shared/status'
 import type { SordinoSettings, MessageType } from '@/shared/types'
 import { getLocalDateString, MAX_QUICK_BYPASSES } from '@/shared/types'
 import { applyEffects } from '@/store/adapters/apply-effects'
 import { chromeStorage } from '@/store/adapters/chrome-storage'
 import { serveCommands } from '@/store/adapters/runtime'
+import {
+  handleMuteThisSite,
+  installMuteThisSiteMenu,
+  MUTE_THIS_SITE_ID,
+} from '@/store/mute-this-site'
 import { openReader, type SordinoReader } from '@/store/reader'
-import { openStore } from '@/store/store'
+import { isWaitForStore } from '@/store/store-ready'
+import { openStore, type SordinoStore } from '@/store/store'
+
+// One store for this service-worker start. A later start has none of this
+// memory; the listener below opens it again. Readers wait on the same promise.
+const storage = chromeStorage()
+let opening: Promise<SordinoStore> | null = null
+function openBackgroundStore(): Promise<SordinoStore> {
+  if (!opening) {
+    opening = openStore({ storage, clock: Date.now }).catch((error) => {
+      opening = null
+      throw error
+    })
+  }
+  return opening
+}
+
+// Registered while the worker script evaluates, on every start, before any await.
+// Returning the promise keeps the worker alive until the site is written.
+try {
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    const pageUrl = info.pageUrl ?? tab?.url
+    if (info.menuItemId !== MUTE_THIS_SITE_ID || !pageUrl) return
+    return handleMuteThisSite(pageUrl, openBackgroundStore)
+      .then(async ({ effects, notice }) => {
+        await applyEffects(effects)
+        if (notice) notifyMuteThisSite(notice)
+      })
+      .catch((error) => {
+        console.error('Sordino: Mute this site failed', error)
+        notifyMuteThisSite(COMMAND_FAILED)
+      })
+  })
+} catch (error) {
+  // `wxt prepare` evaluates this module under a fake browser that has no menus API.
+  // That mock throws an Error whose constructor is MockNotImplementedError; `.name` stays "Error".
+  const unimplemented =
+    error instanceof Error &&
+    (error.constructor.name === 'MockNotImplementedError' ||
+      error.message.includes('not implemented'))
+  if (!unimplemented) console.error('Sordino: could not listen for Mute this site', error)
+}
+
+function notifyMuteThisSite(message: string): void {
+  chrome.notifications.create(
+    MUTE_THIS_SITE_ID,
+    {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
+      title: 'Sordino',
+      message,
+    },
+    () => void chrome.runtime.lastError
+  )
+}
 
 // Broadcast settings update to all tabs so content scripts can react immediately
 async function broadcastSettingsUpdate(): Promise<void> {
@@ -55,36 +120,9 @@ async function hasCountedBlock(blockKey: string): Promise<boolean> {
   return counted.has(blockKey)
 }
 
-// Check if URL matches any blocked site
-function isUrlBlocked(url: string, settings: SordinoSettings): boolean {
-  try {
-    const urlObj = new URL(url)
-    const hostname = urlObj.hostname.replace(/^www\./, '')
-
-    // Check categories
-    for (const category of settings.categories) {
-      if (!category.enabled) continue
-      const disabledSites = category.disabledSites ?? []
-      for (const site of category.sites) {
-        if (disabledSites.includes(site)) continue // Skip toggled-off sites
-        if (hostname === site || hostname.endsWith(`.${site}`)) {
-          return true
-        }
-      }
-    }
-
-    // Check custom sites
-    for (const site of settings.customSites) {
-      const cleanSite = site.replace(/^www\./, '')
-      if (hostname === cleanSite || hostname.endsWith(`.${cleanSite}`)) {
-        return true
-      }
-    }
-
-    return false
-  } catch {
-    return false
-  }
+async function mutedList(settings: SordinoSettings, reader: SordinoReader): Promise<MutedList> {
+  const { config } = await reader.read('config')
+  return { categories: settings.categories, ownSites: config.ownSites }
 }
 
 // Get Monday of a given date's week (local timezone)
@@ -194,19 +232,16 @@ async function checkBypassReset(): Promise<SordinoSettings> {
   return result
 }
 
-// Check if site has active bypass
-function hasBypass(url: string, settings: SordinoSettings): boolean {
+// A bypass covers the muted site it was granted for. 1.x bypasses were keyed
+// by the raw host; those still match until they expire.
+function hasBypass(url: string, settings: SordinoSettings, list: MutedList): boolean {
   const bypass = settings.bypassState.activeBypass
-  if (!bypass) return false
-  if (Date.now() > bypass.expiresAt) return false
-
-  try {
-    const urlObj = new URL(url)
-    const hostname = urlObj.hostname.replace(/^www\./, '')
-    return hostname === bypass.site || hostname.endsWith(`.${bypass.site}`)
-  } catch {
-    return false
-  }
+  if (!bypass || Date.now() > bypass.expiresAt) return false
+  const matched = matchMutedSite(url, list)
+  if (matched?.id === bypass.site) return true
+  const parsed = parseMutedSite(url)
+  if (!parsed.ok) return false
+  return parsed.site.id === bypass.site || parsed.site.id.endsWith(`.${bypass.site}`)
 }
 
 // Get site from URL
@@ -219,11 +254,6 @@ function getSiteFromUrl(url: string): string {
   }
 }
 
-// Get a unique key for tracking counted blocks (hostname only, not full URL)
-function getBlockKey(url: string): string {
-  return getSiteFromUrl(url)
-}
-
 async function handleMessage(message: MessageType, reader: SordinoReader): Promise<unknown> {
   const settings = await checkBypassReset()
 
@@ -231,21 +261,18 @@ async function handleMessage(message: MessageType, reader: SordinoReader): Promi
     case 'GET_BLOCK_STATUS': {
       const { state, config } = await reader.read('state', 'config')
       const muting = decideMuting(config.schedules, state.mode, Date.now())
+      if (!muting.muted) return { isBlocked: false }
 
-      if (!muting.muted) {
+      const list = await mutedList(settings, reader)
+      const matched = matchMutedSite(message.url, list)
+      if (!matched) return { isBlocked: false }
+
+      if (hasBypass(message.url, settings, list)) {
         return { isBlocked: false }
       }
 
-      if (!isUrlBlocked(message.url, settings)) {
-        return { isBlocked: false }
-      }
-
-      if (hasBypass(message.url, settings)) {
-        return { isBlocked: false }
-      }
-
-      // Record block with per-site tracking
-      const blockKey = getBlockKey(message.url)
+      // The matched muted site's id is the key Usage will keep using.
+      const blockKey = matched.id
       const isFirstBlockForSite = !(await hasCountedBlock(blockKey))
       await addCountedBlock(blockKey)
 
@@ -289,7 +316,10 @@ async function handleMessage(message: MessageType, reader: SordinoReader): Promi
         return { success: false, remaining: 0 }
       }
 
-      const site = getSiteFromUrl(message.site)
+      const list = await mutedList(settings, reader)
+      const matched = matchMutedSite(message.site, list)
+      const parsed = parseMutedSite(message.site)
+      const site = matched?.id ?? (parsed.ok ? parsed.site.id : getSiteFromUrl(message.site))
 
       // Remove site from counted blocks (allows re-counting if they come back)
       await removeCountedBlock(site)
@@ -370,9 +400,8 @@ async function handleMessage(message: MessageType, reader: SordinoReader): Promi
 export default defineBackground(() => {
   // The Sordino store is the one writer of `config`, `state` and `usage`
   // (ADR-0004). Listeners are registered synchronously and wait for it to open.
-  const storage = chromeStorage()
-  const reader = openReader(storage)
-  const ready = openStore({ storage, clock: Date.now })
+  const ready = openBackgroundStore()
+  const reader = openReader(storage, ready)
   const settle = () =>
     ready
       .then((store) => store.settle())
@@ -380,14 +409,16 @@ export default defineBackground(() => {
       .catch((error) => console.error('Sordino: could not settle', error))
   serveCommands(ready, applyEffects)
   chrome.alarms.onAlarm.addListener(settle) // Mute now / Pause ends, schedule boundaries
-  chrome.runtime.onStartup.addListener(settle)
-  chrome.runtime.onInstalled.addListener(async () => {
-    try {
-      await checkBypassReset() // initialises the 1.x settings on install
-    } catch (error) {
-      console.error('Sordino: Error in onInstalled handler', error)
-    }
-    await settle()
+  // The menu is created on install and on browser startup, not on every wake:
+  // removeAll then create, so the id never collides.
+  chrome.runtime.onStartup.addListener(() => {
+    return installMuteThisSiteMenu().then(() => settle())
+  })
+  chrome.runtime.onInstalled.addListener(() => {
+    return installMuteThisSiteMenu()
+      .then(() => checkBypassReset()) // initialises the 1.x settings on install
+      .catch((error) => console.error('Sordino: Error in onInstalled handler', error))
+      .then(() => settle())
   })
 
   // Schedules live in `config`. A change re-settles the badge and alarms.
@@ -397,10 +428,17 @@ export default defineBackground(() => {
   reader.watch(['state'], () => void broadcastSettingsUpdate())
 
   // 1.x messages from the overlay and settings page, until their tickets
-  // replace them with store commands.
-  chrome.runtime.onMessage.addListener((message: MessageType, _sender, sendResponse) => {
+  // replace them with store commands. Readers in other pages wait on the store.
+  chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+    if (isWaitForStore(message)) {
+      ready.then(
+        () => sendResponse({ ok: true }),
+        (error) => sendResponse({ ok: false, error: String(error) })
+      )
+      return true
+    }
     if (typeof message !== 'object' || message === null || !('type' in message)) return false
-    handleMessage(message, reader).then(sendResponse)
+    handleMessage(message as MessageType, reader).then(sendResponse)
     return true // Keep channel open for async response
   })
 })

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { chromeStorageReader } from '@/store/adapters/chrome-storage-reader'
 import type { ConfigDoc, StateDoc } from '@/store/docs'
 import { openReader } from '@/store/reader'
+import { askStoreReady } from '@/store/store-ready'
 
 export function useSordinoState(): StateDoc | null {
   const [state, setState] = useState<StateDoc | null>(null)
@@ -14,12 +15,23 @@ export function useSordinoState(): StateDoc | null {
       watched = true
       if (docs.state) setState(docs.state)
     })
-    reader.read('state').then((docs) => watched || setState(docs.state))
-    return stop
+    // Migration writes state a moment after the worker starts. Wait for that
+    // write so the first read is not the pre-migration doc.
+    let cancel = false
+    askStoreReady()
+      .then(() => reader.read('state'))
+      .then((docs) => {
+        if (!cancel && !watched) setState(docs.state)
+      })
+    return () => {
+      cancel = true
+      stop()
+    }
   }, [])
   return state
 }
 
+/** The store's `config` doc (schedules and own muted sites), kept current by watching storage. */
 export function useSordinoConfig(): ConfigDoc | null {
   const [config, setConfig] = useState<ConfigDoc | null>(null)
   useEffect(() => {
@@ -29,8 +41,16 @@ export function useSordinoConfig(): ConfigDoc | null {
       watched = true
       if (docs.config) setConfig(docs.config)
     })
-    reader.read('config').then((docs) => watched || setConfig(docs.config))
-    return stop
+    let cancel = false
+    askStoreReady()
+      .then(() => reader.read('config'))
+      .then((docs) => {
+        if (!cancel && !watched) setConfig(docs.config)
+      })
+    return () => {
+      cancel = true
+      stop()
+    }
   }, [])
   return config
 }
