@@ -78,7 +78,7 @@ function findChromeBinary(installLocation) {
   const stack = [installLocation]
   while (stack.length) {
     const dir = stack.pop()
-    let entries = []
+    let entries
     try {
       entries = readdirSync(dir)
     } catch {
