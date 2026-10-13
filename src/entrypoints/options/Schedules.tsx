@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useState, type Dispatch, type SetStateAction } from 'react'
 import { Check, Plus, Trash2 } from 'lucide-react'
 import {
   DAYS_OF_WEEK,
@@ -261,7 +261,7 @@ function DeleteConfirm({ onConfirm, onCancel }: { onConfirm: () => void; onCance
  */
 export function ScheduleForm({
   draft,
-  onChange,
+  onChange: setDraft,
   onCancel,
   onSubmit,
   submitLabel,
@@ -269,7 +269,8 @@ export function ScheduleForm({
   autoFocus = false,
 }: {
   draft: ScheduleDraft
-  onChange: (draft: ScheduleDraft) => void
+  /** Parent setState. Updaters chain, so several edits in one tick all stick. */
+  onChange: Dispatch<SetStateAction<ScheduleDraft>>
   onCancel: () => void
   onSubmit: () => void
   submitLabel: string
@@ -283,10 +284,12 @@ export function ScheduleForm({
   const endId = useId()
 
   const toggleDay = (day: DayOfWeek) => {
-    const days = DAYS_OF_WEEK.filter((d) =>
-      d === day ? !draft.days.includes(d) : draft.days.includes(d)
-    )
-    onChange({ ...draft, days: [...days] })
+    setDraft((prev) => {
+      const days = DAYS_OF_WEEK.filter((d) =>
+        d === day ? !prev.days.includes(d) : prev.days.includes(d)
+      )
+      return { ...prev, days: [...days] }
+    })
   }
 
   return (
@@ -299,7 +302,10 @@ export function ScheduleForm({
         type="text"
         value={draft.name}
         autoFocus={autoFocus}
-        onChange={(e) => onChange({ ...draft, name: e.target.value })}
+        onChange={(e) => {
+          const name = e.target.value
+          setDraft((prev) => ({ ...prev, name }))
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && validation.ok && !pending) onSubmit()
         }}
@@ -336,7 +342,7 @@ export function ScheduleForm({
           type="button"
           role="checkbox"
           aria-checked={draft.allDay}
-          onClick={() => onChange({ ...draft, allDay: !draft.allDay })}
+          onClick={() => setDraft((prev) => ({ ...prev, allDay: !prev.allDay }))}
           className={cn(
             'w-5 h-5 rounded border-2 flex items-center justify-center transition-colors duration-150 ease-out motion-reduce:transition-none',
             draft.allDay
@@ -359,7 +365,10 @@ export function ScheduleForm({
               id={startId}
               type="time"
               value={draft.startTime}
-              onChange={(e) => onChange({ ...draft, startTime: e.target.value })}
+              onChange={(e) => {
+                const startTime = e.target.value
+                setDraft((prev) => ({ ...prev, startTime }))
+              }}
               className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
           </div>
@@ -371,7 +380,10 @@ export function ScheduleForm({
               id={endId}
               type="time"
               value={draft.endTime}
-              onChange={(e) => onChange({ ...draft, endTime: e.target.value })}
+              onChange={(e) => {
+                const endTime = e.target.value
+                setDraft((prev) => ({ ...prev, endTime }))
+              }}
               className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
           </div>
