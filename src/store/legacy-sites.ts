@@ -1,9 +1,6 @@
-// Categories still live in the 1.x settings object. Custom sites are adopted
-// into `config.ownSites` when that array is absent, the same way a missing
-// schedule list falls back to 1.x. Once the array exists, even empty, it is
-// the list (#4). v1 migration (#8) should not append them again.
-import { DEFAULT_CATEGORIES } from '@/shared/types'
-import type { CategorySites } from '@/shared/muted-sites'
+// v1 categories are merged by id once; current config lists are authoritative.
+import { DEFAULT_CATEGORIES, type Category } from '@/shared/types'
+import { parseMutedSite } from '@/shared/muted-sites'
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -13,18 +10,50 @@ export function legacyCustomSites(raw: unknown): string[] {
   return raw.customSites.filter((site): site is string => typeof site === 'string')
 }
 
-/** Missing categories mean the 1.x defaults, as `getSettings` does. An empty array is empty. */
-export function legacyCategories(raw: unknown): CategorySites[] {
-  if (!isRecord(raw) || !Array.isArray(raw.categories)) return DEFAULT_CATEGORIES
-  return raw.categories.filter(isCategory)
+/** Saved category ids override defaults; new default ids are added on v1 migration. */
+export function legacyCategories(raw: unknown): Category[] {
+  const saved = isRecord(raw) ? parseCategories(raw.categories) : []
+  return [
+    ...DEFAULT_CATEGORIES.map(
+      (category) => saved.find((item) => item.id === category.id) ?? structuredClone(category)
+    ),
+    ...saved.filter((category) => !DEFAULT_CATEGORIES.some((item) => item.id === category.id)),
+  ]
 }
 
-function isCategory(raw: unknown): raw is CategorySites {
+/** Repairs storage only. File imports validate before reaching this parser. */
+export function parseCategories(raw: unknown): Category[] {
+  if (!Array.isArray(raw)) return []
+  const kept: Category[] = []
+  for (const item of raw) {
+    if (!isCategory(item) || kept.some((category) => category.id === item.id)) continue
+    const hosts = (sites: readonly string[]) => [
+      ...new Set(
+        sites.flatMap((input) => {
+          const parsed = parseMutedSite(input)
+          return parsed.ok ? [parsed.site.id] : []
+        })
+      ),
+    ]
+    kept.push({
+      id: item.id,
+      name: item.name,
+      enabled: item.enabled,
+      sites: hosts(item.sites),
+      ...(item.disabledSites === undefined ? {} : { disabledSites: hosts(item.disabledSites) }),
+    })
+  }
+  return kept
+}
+
+export function isCategory(raw: unknown): raw is Category {
   if (!isRecord(raw)) return false
   const { id, name, enabled, sites, disabledSites } = raw
   return (
     typeof id === 'string' &&
+    id.trim().length > 0 &&
     typeof name === 'string' &&
+    name.trim().length > 0 &&
     typeof enabled === 'boolean' &&
     Array.isArray(sites) &&
     sites.every((site) => typeof site === 'string') &&
