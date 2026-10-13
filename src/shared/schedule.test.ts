@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   SUGGESTED_SCHEDULES,
   describeSchedule,
   isScheduleActive,
+  schedulesFromConfig,
   schedulesFromLegacy,
   toScheduleDraft,
   validateSchedule,
@@ -191,6 +192,7 @@ describe('schedulesFromLegacy', () => {
   })
 
   it('turns a 1.x 00:00–23:59 window into all day and drops one that can never run', () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {})
     const schedules = schedulesFromLegacy({
       schedules: [
         {
@@ -217,6 +219,7 @@ describe('schedulesFromLegacy', () => {
           startTime: '09:00',
           endTime: '10:00',
         },
+        'not-a-schedule',
       ],
     })
 
@@ -233,6 +236,63 @@ describe('schedulesFromLegacy', () => {
       },
     ])
     expect(isScheduleActive(schedules[0]!, at('2026-10-05T23:59:30'))).toBe(true)
+    expect(debug.mock.calls.map((call) => call[0])).toEqual([
+      'Sordino: dropped 1.x schedule "Broken" (broken): start-equals-end — Start and end are the same, so this schedule would never run.',
+      'Sordino: dropped 1.x schedule (nameless): blank-name — A schedule needs a name.',
+      'Sordino: dropped 1.x schedule (not an object): not an object',
+    ])
+    debug.mockRestore()
+  })
+
+  it('assigns an id when a 1.x schedule has none', () => {
+    const [schedule] = schedulesFromLegacy({
+      schedules: [
+        {
+          name: 'Mornings',
+          enabled: true,
+          days: ['tue'],
+          startTime: '08:00',
+          endTime: '09:00',
+        },
+      ],
+    })
+
+    expect(schedule).toMatchObject({
+      name: 'Mornings',
+      enabled: true,
+      days: ['tue'],
+      allDay: false,
+      startTime: '08:00',
+      endTime: '09:00',
+      appliesTo: 'all',
+    })
+    expect(schedule?.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  })
+
+  it('assigns an id to a stored schedule that has none, and does not log a stored drop', () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const [schedule] = schedulesFromConfig([
+      {
+        name: 'Mornings',
+        enabled: false,
+        days: ['tue'],
+        allDay: false,
+        startTime: '08:00',
+        endTime: '09:00',
+      },
+      {
+        name: 'Broken',
+        enabled: true,
+        days: ['mon'],
+        startTime: '09:00',
+        endTime: '09:00',
+      },
+    ])
+
+    expect(schedule).toMatchObject({ name: 'Mornings', enabled: false, appliesTo: 'all' })
+    expect(schedule?.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+    expect(debug).not.toHaveBeenCalled()
+    debug.mockRestore()
   })
 
   it('keeps an empty list empty', () => {

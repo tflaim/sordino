@@ -43,8 +43,9 @@ function mergeWithDefaults(stored: Partial<SordinoSettings>): SordinoSettings {
         stored.weeklyStats?.emergencyRefreshesUsed ??
         DEFAULT_SETTINGS.weeklyStats.emergencyRefreshesUsed,
     },
-    // Arrays should use stored values if they exist, otherwise defaults
-    schedules: stored.schedules ?? DEFAULT_SETTINGS.schedules,
+    // Arrays should use stored values if they exist, otherwise defaults.
+    // A 1.x `schedules` array may still sit on the stored object; this shape
+    // does not read or default it. The store copies that array into config.
     categories: stored.categories ?? DEFAULT_SETTINGS.categories,
     customSites: stored.customSites ?? DEFAULT_SETTINGS.customSites,
     onboardingDismissed: inferOnboardingDismissed(stored),

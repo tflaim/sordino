@@ -217,8 +217,9 @@ export function isScheduleActive(schedule: Schedule, now: number): boolean {
 
 /**
  * Schedules from a 1.x settings object. No schedule list means the suggested
- * ones; a list is kept as-is, dropping entries that can never run. A window
- * of 00:00–23:59 was 1.x's all-day approximation and becomes a true all day.
+ * ones; a list is kept as-is. An entry that can never run is dropped, with a
+ * debug line naming it and why. A window of 00:00–23:59 was 1.x's all-day
+ * approximation and becomes a true all day.
  */
 export function schedulesFromLegacy(settings: unknown): Schedule[] {
   if (!isRecord(settings) || !Array.isArray(settings.schedules))
@@ -234,10 +235,18 @@ export function schedulesFromConfig(raw: unknown): Schedule[] {
 
 function fromLegacyItem(raw: unknown): Schedule[] {
   const draft = coerceScheduleDraft(raw)
-  if (!draft) return []
+  if (!draft) {
+    logDropped(raw, 'not an object')
+    return []
+  }
   const start = normalizeTime(draft.startTime)
   const end = normalizeTime(draft.endTime)
   if (!draft.allDay && start === '00:00' && end === '23:59') draft.allDay = true
+  const validated = validateSchedule(draft)
+  if (!validated.ok) {
+    logDropped(raw, unrunnableWhy(validated.reasons))
+    return []
+  }
   return finish(draft)
 }
 
@@ -249,8 +258,26 @@ function fromStoredItem(raw: unknown): Schedule[] {
 
 function finish(draft: ScheduleDraft): Schedule[] {
   const validated = validateSchedule(draft)
-  if (!validated.ok || !validated.schedule.id) return []
-  return [{ ...validated.schedule, id: validated.schedule.id }]
+  if (!validated.ok) return []
+  return [{ ...validated.schedule, id: validated.schedule.id ?? crypto.randomUUID() }]
+}
+
+function logDropped(raw: unknown, why: string): void {
+  console.debug(`Sordino: dropped 1.x schedule ${droppedName(raw)}: ${why}`)
+}
+
+function droppedName(raw: unknown): string {
+  if (!isRecord(raw)) return '(not an object)'
+  const name = typeof raw.name === 'string' ? raw.name.trim() : ''
+  const id = typeof raw.id === 'string' ? raw.id.trim() : ''
+  if (name && id) return `"${name}" (${id})`
+  if (name) return `"${name}"`
+  if (id) return `(${id})`
+  return '(unnamed)'
+}
+
+function unrunnableWhy(reasons: readonly ScheduleReason[]): string {
+  return reasons.map((reason) => `${reason} — ${SCHEDULE_REASON[reason]}`).join('; ')
 }
 
 function unique(schedules: Schedule[]): Schedule[] {

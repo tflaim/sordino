@@ -46,14 +46,21 @@ export function SchedulesSection() {
 
   const send = async (command: Command): Promise<boolean> => {
     setPending(true)
-    const result = await sordino.send(command)
-    setPending(false)
-    if (!result.ok) {
-      setProblem('Sordino is restarting. Try again in a moment.')
-      return false
+    try {
+      const result = await sordino.send(command)
+      if (!result.ok) {
+        setProblem('Sordino is restarting. Try again in a moment.')
+        return false
+      }
+      if (result.outcome.kind === 'missing') {
+        setProblem('That schedule is already gone.')
+        return false
+      }
+      setProblem(null)
+      return result.outcome.kind !== 'refused'
+    } finally {
+      setPending(false)
     }
-    setProblem(null)
-    return result.outcome.kind !== 'refused'
   }
 
   const save = async (next: ScheduleDraft) => {
