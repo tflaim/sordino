@@ -34,9 +34,17 @@ export interface SordinoReader {
   ): () => void
 }
 
-export function openReader(storage: StorageReadPort): SordinoReader {
+export function openReader(storage: StorageReadPort, ready?: Promise<unknown>): SordinoReader {
+  const gate = () =>
+    Promise.resolve(ready).then(
+      () => undefined,
+      () => undefined
+    )
   return {
     async read(...keys) {
+      // The background's open writes migration. Readers that share that promise
+      // do not read until the write has finished.
+      await gate()
       // A config missing its schedule list or own-site list is filled from the 1.x key, in memory.
       const list = keys as readonly StoredKey[]
       const ask: StorageKey[] = list.includes('config') ? [...list, 'sordino_settings'] : [...list]

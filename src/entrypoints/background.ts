@@ -4,7 +4,6 @@ import { decideMuting } from '@/shared/muting'
 import {
   COMMAND_FAILED,
   matchMutedSite,
-  muteThisSiteNotice,
   parseMutedSite,
   type MutedList,
 } from '@/shared/muted-sites'
@@ -14,8 +13,67 @@ import { getLocalDateString, MAX_QUICK_BYPASSES } from '@/shared/types'
 import { applyEffects } from '@/store/adapters/apply-effects'
 import { chromeStorage } from '@/store/adapters/chrome-storage'
 import { serveCommands } from '@/store/adapters/runtime'
+import {
+  handleMuteThisSite,
+  installMuteThisSiteMenu,
+  MUTE_THIS_SITE_ID,
+} from '@/store/mute-this-site'
 import { openReader, type SordinoReader } from '@/store/reader'
-import { openStore } from '@/store/store'
+import { isWaitForStore } from '@/store/store-ready'
+import { openStore, type SordinoStore } from '@/store/store'
+
+// One store for this service-worker start. A later start has none of this
+// memory; the listener below opens it again. Readers wait on the same promise.
+const storage = chromeStorage()
+let opening: Promise<SordinoStore> | null = null
+function openBackgroundStore(): Promise<SordinoStore> {
+  if (!opening) {
+    opening = openStore({ storage, clock: Date.now }).catch((error) => {
+      opening = null
+      throw error
+    })
+  }
+  return opening
+}
+
+// Registered while the worker script evaluates, on every start, before any await.
+// Returning the promise keeps the worker alive until the site is written.
+try {
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    const pageUrl = info.pageUrl ?? tab?.url
+    if (info.menuItemId !== MUTE_THIS_SITE_ID || !pageUrl) return
+    return handleMuteThisSite(pageUrl, openBackgroundStore)
+      .then(async ({ effects, notice }) => {
+        await applyEffects(effects)
+        if (notice) notifyMuteThisSite(notice)
+      })
+      .catch((error) => {
+        console.error('Sordino: Mute this site failed', error)
+        notifyMuteThisSite(COMMAND_FAILED)
+      })
+  })
+} catch (error) {
+  // `wxt prepare` evaluates this module under a fake browser that has no menus API.
+  // That mock throws an Error whose constructor is MockNotImplementedError; `.name` stays "Error".
+  const unimplemented =
+    error instanceof Error &&
+    (error.constructor.name === 'MockNotImplementedError' ||
+      error.message.includes('not implemented'))
+  if (!unimplemented) console.error('Sordino: could not listen for Mute this site', error)
+}
+
+function notifyMuteThisSite(message: string): void {
+  chrome.notifications.create(
+    MUTE_THIS_SITE_ID,
+    {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
+      title: 'Sordino',
+      message,
+    },
+    () => void chrome.runtime.lastError
+  )
+}
 
 // Broadcast settings update to all tabs so content scripts can react immediately
 async function broadcastSettingsUpdate(): Promise<void> {
@@ -342,9 +400,8 @@ async function handleMessage(message: MessageType, reader: SordinoReader): Promi
 export default defineBackground(() => {
   // The Sordino store is the one writer of `config`, `state` and `usage`
   // (ADR-0004). Listeners are registered synchronously and wait for it to open.
-  const storage = chromeStorage()
-  const reader = openReader(storage)
-  const ready = openStore({ storage, clock: Date.now })
+  const ready = openBackgroundStore()
+  const reader = openReader(storage, ready)
   const settle = () =>
     ready
       .then((store) => store.settle())
@@ -352,14 +409,16 @@ export default defineBackground(() => {
       .catch((error) => console.error('Sordino: could not settle', error))
   serveCommands(ready, applyEffects)
   chrome.alarms.onAlarm.addListener(settle) // Mute now / Pause ends, schedule boundaries
-  chrome.runtime.onStartup.addListener(settle)
-  chrome.runtime.onInstalled.addListener(async () => {
-    try {
-      await checkBypassReset() // initialises the 1.x settings on install
-    } catch (error) {
-      console.error('Sordino: Error in onInstalled handler', error)
-    }
-    await settle()
+  // The menu is created on install and on browser startup, not on every wake:
+  // removeAll then create, so the id never collides.
+  chrome.runtime.onStartup.addListener(() => {
+    return installMuteThisSiteMenu().then(() => settle())
+  })
+  chrome.runtime.onInstalled.addListener(() => {
+    return installMuteThisSiteMenu()
+      .then(() => checkBypassReset()) // initialises the 1.x settings on install
+      .catch((error) => console.error('Sordino: Error in onInstalled handler', error))
+      .then(() => settle())
   })
 
   // Schedules live in `config`. A change re-settles the badge and alarms.
@@ -368,53 +427,18 @@ export default defineBackground(() => {
   reader.watch(['config'], () => void settle())
   reader.watch(['state'], () => void broadcastSettingsUpdate())
 
-  // "Mute this site" adds the page through the same command. It does not start muting.
-  // Adding is quiet (the page is now muted). Already muted, refused, or a command
-  // that did not run uses the popup's sentence.
-  const muteThisSite = 'mute-this-site'
-  chrome.contextMenus.onClicked.addListener((info) => {
-    if (info.menuItemId !== muteThisSite || !info.pageUrl) return
-    const input = info.pageUrl
-    void ready
-      .then((store) => store.dispatch({ type: 'add-muted-site', input }, { kind: 'background' }))
-      .then(({ result, effects }) => {
-        applyEffects(effects)
-        const message = muteThisSiteNotice(result)
-        if (message) notifyMuteThisSite(message)
-      })
-      .catch((error) => {
-        console.error('Sordino: Mute this site failed', error)
-        notifyMuteThisSite(COMMAND_FAILED)
-      })
-  })
-  chrome.contextMenus.create(
-    {
-      id: muteThisSite,
-      title: 'Mute this site',
-      contexts: ['page', 'frame', 'selection', 'link', 'image', 'video', 'audio'],
-      documentUrlPatterns: ['http://*/*', 'https://*/*'],
-    },
-    () => void chrome.runtime.lastError // the id already exists after the first start
-  )
-
-  function notifyMuteThisSite(message: string): void {
-    chrome.notifications.create(
-      muteThisSite,
-      {
-        type: 'basic',
-        iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
-        title: 'Sordino',
-        message,
-      },
-      () => void chrome.runtime.lastError
-    )
-  }
-
   // 1.x messages from the overlay and settings page, until their tickets
-  // replace them with store commands.
-  chrome.runtime.onMessage.addListener((message: MessageType, _sender, sendResponse) => {
+  // replace them with store commands. Readers in other pages wait on the store.
+  chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+    if (isWaitForStore(message)) {
+      ready.then(
+        () => sendResponse({ ok: true }),
+        (error) => sendResponse({ ok: false, error: String(error) })
+      )
+      return true
+    }
     if (typeof message !== 'object' || message === null || !('type' in message)) return false
-    handleMessage(message, reader).then(sendResponse)
+    handleMessage(message as MessageType, reader).then(sendResponse)
     return true // Keep channel open for async response
   })
 })

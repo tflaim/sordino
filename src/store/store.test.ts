@@ -458,6 +458,32 @@ describe('Sordino store', () => {
       expect(config.ownSites).toEqual([example])
       expect(storage.writes).toEqual([])
     })
+
+    it('a reader does not read until migration has finished', async () => {
+      const storage = memoryStorage({
+        sordino_settings: { customSites: ['example.org'] },
+      })
+      let reads = 0
+      const gated = {
+        ...storage,
+        read: async (keys: Parameters<typeof storage.read>[0]) => {
+          reads += 1
+          return storage.read(keys)
+        },
+      }
+      let release!: () => void
+      const ready = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const pending = openReader(gated, ready).read('config')
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(reads).toBe(0)
+
+      await openStore({ storage, clock: fixedClock('2026-10-05T10:00').now })
+      release()
+      expect((await pending).config.ownSites).toEqual([example])
+      expect(reads).toBeGreaterThan(0)
+    })
   })
 
   it('copies 1.x schedules into config, and a later edit of the 1.x key does not change them', async () => {
