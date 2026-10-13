@@ -2,7 +2,16 @@
 // control-sordino — drive a disposable Chromium session with the built Sordino
 // extension loaded. See ../SKILL.md for launch/doctor/drive/evidence/cleanup.
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -60,10 +69,25 @@ function parseArgs(argv) {
 function sessionPath() {
   const dir = process.env.SORDINO_VERIFY_DIR
   if (!dir) {
-    console.error('FAIL SORDINO_VERIFY_DIR is not set (run launch first, then export it)')
+    console.error(`FAIL SORDINO_VERIFY_DIR is not set.
+
+Run launch first, then copy and run the \`export\` field from its JSON stdout, e.g.:
+  node .cursor/skills/verify-sordino/scripts/control-sordino.mjs launch --run-id demo
+  # stdout includes: "export": "export SORDINO_VERIFY_DIR=..."
+  # On macOS that path is under $TMPDIR (often /var/folders/...), not always /tmp.
+  eval "$(...paste the export line...)"   # or run the export line as printed
+`)
     process.exit(1)
   }
   return join(dir, 'session.json')
+}
+
+function logTail(logFile, maxLines = 40) {
+  if (!existsSync(logFile)) return '(daemon.log missing — stdio was not captured)'
+  const text = readFileSync(logFile, 'utf8')
+  if (!text.trim()) return '(daemon.log empty)'
+  const lines = text.split('\n')
+  return lines.slice(-maxLines).join('\n')
 }
 
 function loadSession() {
@@ -154,6 +178,10 @@ async function launch(args) {
   const daemon = join(__dirname, 'daemon.mjs')
   const readyFile = join(sessionDir, 'ready.json')
   const logFile = join(sessionDir, 'daemon.log')
+  // Capture daemon stdout/stderr from process start (not only the ready line
+  // the daemon appends itself). Parent closes its fd after spawn; the child keeps it.
+  writeFileSync(logFile, '')
+  const logFd = openSync(logFile, 'a')
   const child = spawn(process.execPath, [daemon], {
     env: {
       ...process.env,
@@ -161,8 +189,9 @@ async function launch(args) {
       SORDINO_READY_FILE: readyFile,
     },
     detached: true,
-    stdio: ['ignore', 'ignore', 'ignore'],
+    stdio: ['ignore', logFd, logFd],
   })
+  closeSync(logFd)
   child.unref()
 
   const ready = await new Promise((resolveReady, reject) => {
@@ -177,14 +206,16 @@ async function launch(args) {
       if (Date.now() - started > 30000) {
         clearInterval(timer)
         child.off('exit', onExit)
-        const log = existsSync(logFile) ? readFileSync(logFile, 'utf8') : ''
-        reject(new Error(`daemon did not become ready\n${log}`))
+        reject(
+          new Error(`daemon did not become ready\n--- daemon.log (tail) ---\n${logTail(logFile)}`)
+        )
       }
     }, 100)
     const onExit = (code) => {
       clearInterval(timer)
-      const log = existsSync(logFile) ? readFileSync(logFile, 'utf8') : ''
-      reject(new Error(`daemon exited early (${code})\n${log}`))
+      reject(
+        new Error(`daemon exited early (${code})\n--- daemon.log (tail) ---\n${logTail(logFile)}`)
+      )
     }
     child.on('exit', onExit)
   })
@@ -251,7 +282,12 @@ const [cmd, sub] = args._
 if (!cmd || args.help) usage(cmd ? 0 : 1)
 
 if (cmd === 'launch') {
-  await launch(args)
+  try {
+    await launch(args)
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err))
+    process.exit(1)
+  }
 } else if (cmd === 'doctor') {
   await api('GET', '/doctor')
 } else if (cmd === 'popup' && sub === 'open') {

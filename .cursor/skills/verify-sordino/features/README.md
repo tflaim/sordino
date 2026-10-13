@@ -6,10 +6,11 @@ feature file as the recipe.
 
 ## Baseline preconditions
 
-- Build Chrome output: `npm run build:chrome` → `.output/chrome-mv3/`.
+- Install with `npm ci` (not `npm install`), then
+  `npm run build:chrome` → `.output/chrome-mv3/`.
 - Launch with `control-sordino launch` and run the `export` field from its JSON
-  stdout (path is under `$TMPDIR` on macOS, not always `/tmp`). Default
-  `--map-host www.reddit.com` serves a local fake page.
+  stdout (**macOS:** path under `$TMPDIR`, often `/var/folders/...`; **Linux:**
+  often `/tmp/...`). Default `--map-host www.reddit.com` serves a local fake page.
 - Run `control-sordino doctor` and require `"ok": true`, a Sordino
   `manifestName`, and an `extensionId`.
 - Never drive a Chromium profile that was not started by this verification run.
