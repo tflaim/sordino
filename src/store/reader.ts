@@ -37,7 +37,7 @@ export interface SordinoReader {
 export function openReader(storage: StorageReadPort): SordinoReader {
   return {
     async read(...keys) {
-      // A config with no schedule list yet is filled from the 1.x key, in memory.
+      // A config missing its schedule list or own-site list is filled from the 1.x key, in memory.
       const list = keys as readonly StoredKey[]
       const ask: StorageKey[] = list.includes('config') ? [...list, 'sordino_settings'] : [...list]
       const raw = await storage.read(ask)

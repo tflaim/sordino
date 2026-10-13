@@ -1,6 +1,7 @@
 import { defineBackground } from 'wxt/utils/define-background'
 import { getSettings, updateSettings } from '@/shared/storage'
 import { decideMuting } from '@/shared/muting'
+import { matchMutedSite, parseMutedSite, type MutedList } from '@/shared/muted-sites'
 import { clockTime } from '@/shared/status'
 import type { SordinoSettings, MessageType } from '@/shared/types'
 import { getLocalDateString, MAX_QUICK_BYPASSES } from '@/shared/types'
@@ -55,36 +56,9 @@ async function hasCountedBlock(blockKey: string): Promise<boolean> {
   return counted.has(blockKey)
 }
 
-// Check if URL matches any blocked site
-function isUrlBlocked(url: string, settings: SordinoSettings): boolean {
-  try {
-    const urlObj = new URL(url)
-    const hostname = urlObj.hostname.replace(/^www\./, '')
-
-    // Check categories
-    for (const category of settings.categories) {
-      if (!category.enabled) continue
-      const disabledSites = category.disabledSites ?? []
-      for (const site of category.sites) {
-        if (disabledSites.includes(site)) continue // Skip toggled-off sites
-        if (hostname === site || hostname.endsWith(`.${site}`)) {
-          return true
-        }
-      }
-    }
-
-    // Check custom sites
-    for (const site of settings.customSites) {
-      const cleanSite = site.replace(/^www\./, '')
-      if (hostname === cleanSite || hostname.endsWith(`.${cleanSite}`)) {
-        return true
-      }
-    }
-
-    return false
-  } catch {
-    return false
-  }
+async function mutedList(settings: SordinoSettings, reader: SordinoReader): Promise<MutedList> {
+  const { config } = await reader.read('config')
+  return { categories: settings.categories, ownSites: config.ownSites }
 }
 
 // Get Monday of a given date's week (local timezone)
@@ -194,19 +168,16 @@ async function checkBypassReset(): Promise<SordinoSettings> {
   return result
 }
 
-// Check if site has active bypass
-function hasBypass(url: string, settings: SordinoSettings): boolean {
+// A bypass covers the muted site it was granted for. 1.x bypasses were keyed
+// by the raw host; those still match until they expire.
+function hasBypass(url: string, settings: SordinoSettings, list: MutedList): boolean {
   const bypass = settings.bypassState.activeBypass
-  if (!bypass) return false
-  if (Date.now() > bypass.expiresAt) return false
-
-  try {
-    const urlObj = new URL(url)
-    const hostname = urlObj.hostname.replace(/^www\./, '')
-    return hostname === bypass.site || hostname.endsWith(`.${bypass.site}`)
-  } catch {
-    return false
-  }
+  if (!bypass || Date.now() > bypass.expiresAt) return false
+  const matched = matchMutedSite(url, list)
+  if (matched?.id === bypass.site) return true
+  const parsed = parseMutedSite(url)
+  if (!parsed.ok) return false
+  return parsed.site.id === bypass.site || parsed.site.id.endsWith(`.${bypass.site}`)
 }
 
 // Get site from URL
@@ -219,11 +190,6 @@ function getSiteFromUrl(url: string): string {
   }
 }
 
-// Get a unique key for tracking counted blocks (hostname only, not full URL)
-function getBlockKey(url: string): string {
-  return getSiteFromUrl(url)
-}
-
 async function handleMessage(message: MessageType, reader: SordinoReader): Promise<unknown> {
   const settings = await checkBypassReset()
 
@@ -231,21 +197,18 @@ async function handleMessage(message: MessageType, reader: SordinoReader): Promi
     case 'GET_BLOCK_STATUS': {
       const { state, config } = await reader.read('state', 'config')
       const muting = decideMuting(config.schedules, state.mode, Date.now())
+      if (!muting.muted) return { isBlocked: false }
 
-      if (!muting.muted) {
+      const list = await mutedList(settings, reader)
+      const matched = matchMutedSite(message.url, list)
+      if (!matched) return { isBlocked: false }
+
+      if (hasBypass(message.url, settings, list)) {
         return { isBlocked: false }
       }
 
-      if (!isUrlBlocked(message.url, settings)) {
-        return { isBlocked: false }
-      }
-
-      if (hasBypass(message.url, settings)) {
-        return { isBlocked: false }
-      }
-
-      // Record block with per-site tracking
-      const blockKey = getBlockKey(message.url)
+      // The matched muted site's id is the key Usage will keep using.
+      const blockKey = matched.id
       const isFirstBlockForSite = !(await hasCountedBlock(blockKey))
       await addCountedBlock(blockKey)
 
@@ -289,7 +252,10 @@ async function handleMessage(message: MessageType, reader: SordinoReader): Promi
         return { success: false, remaining: 0 }
       }
 
-      const site = getSiteFromUrl(message.site)
+      const list = await mutedList(settings, reader)
+      const matched = matchMutedSite(message.site, list)
+      const parsed = parseMutedSite(message.site)
+      const site = matched?.id ?? (parsed.ok ? parsed.site.id : getSiteFromUrl(message.site))
 
       // Remove site from counted blocks (allows re-counting if they come back)
       await removeCountedBlock(site)
@@ -395,6 +361,26 @@ export default defineBackground(() => {
   // and a Mute now or Pause re-checks open tabs.
   reader.watch(['config'], () => void settle())
   reader.watch(['state'], () => void broadcastSettingsUpdate())
+
+  // "Mute this site" adds the page through the same command. It does not start muting.
+  const muteThisSite = 'mute-this-site'
+  chrome.contextMenus.onClicked.addListener((info) => {
+    if (info.menuItemId !== muteThisSite || !info.pageUrl) return
+    const input = info.pageUrl
+    void ready
+      .then((store) => store.dispatch({ type: 'add-muted-site', input }, { kind: 'background' }))
+      .then(({ effects }) => applyEffects(effects))
+      .catch((error) => console.error('Sordino: Mute this site failed', error))
+  })
+  chrome.contextMenus.create(
+    {
+      id: muteThisSite,
+      title: 'Mute this site',
+      contexts: ['page', 'frame', 'selection', 'link', 'image', 'video', 'audio'],
+      documentUrlPatterns: ['http://*/*', 'https://*/*'],
+    },
+    () => void chrome.runtime.lastError // the id already exists after the first start
+  )
 
   // 1.x messages from the overlay and settings page, until their tickets
   // replace them with store commands.

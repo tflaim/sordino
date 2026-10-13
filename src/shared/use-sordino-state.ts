@@ -20,6 +20,7 @@ export function useSordinoState(): StateDoc | null {
   return state
 }
 
+/** The store's `config` doc (schedules and own muted sites), kept current by watching storage. */
 export function useSordinoConfig(): ConfigDoc | null {
   const [config, setConfig] = useState<ConfigDoc | null>(null)
   useEffect(() => {

@@ -8,6 +8,7 @@ import {
   type Length,
   type MutingShow,
 } from '@/shared/muting'
+import { addMutedSiteMessage, mutedSitesOnList } from '@/shared/muted-sites'
 import { clockTime, statusLine } from '@/shared/status'
 import type { SordinoSettings } from '@/shared/types'
 import { MAX_QUICK_BYPASSES } from '@/shared/types'
@@ -97,6 +98,11 @@ function App() {
 
   const maxBypasses = settings.maxBypasses ?? MAX_QUICK_BYPASSES
   const bypassesRemaining = maxBypasses - settings.bypassState.quickBypassesUsed
+  const siteCount = mutedSitesOnList({
+    categories: settings.categories,
+    ownSites: config.ownSites,
+  }).length
+  const categoryCount = settings.categories.filter((category) => category.enabled).length
 
   // The status follows the storage watch; only a command that did not run shows here.
   const send = async (command: Command) => {
@@ -220,17 +226,7 @@ function App() {
             )}
             {status === 'muting' && (
               <p className="text-xs text-muted-foreground/70 mb-4">
-                {(() => {
-                  const enabledSiteCount =
-                    settings.categories
-                      .filter((c) => c.enabled)
-                      .reduce(
-                        (sum, c) => sum + c.sites.length - (c.disabledSites?.length ?? 0),
-                        0
-                      ) + settings.customSites.length
-                  const enabledCategoryCount = settings.categories.filter((c) => c.enabled).length
-                  return `${enabledSiteCount} sites across ${enabledCategoryCount} ${enabledCategoryCount === 1 ? 'category' : 'categories'}`
-                })()}
+                {`${siteCount} sites across ${categoryCount} ${categoryCount === 1 ? 'category' : 'categories'}`}
               </p>
             )}
 
@@ -350,74 +346,100 @@ function StatCard({
 function QuickAddSite() {
   const [isOpen, setIsOpen] = useState(false)
   const [site, setSite] = useState('')
+  const [notice, setNotice] = useState<{ text: string; problem: boolean } | null>(null)
 
   const handleAdd = async () => {
-    if (!site.trim()) return
-
-    const cleanSite = site
-      .trim()
-      .replace(/^https?:\/\//, '')
-      .replace(/^www\./, '')
-      .split('/')[0]!
-
-    // Use queued updateSettings to prevent race conditions
-    await updateSettings((s) => ({
-      ...s,
-      customSites: [...s.customSites, cleanSite],
-    }))
-
-    setSite('')
-    setIsOpen(false)
+    const result = await sordino.send({ type: 'add-muted-site', input: site })
+    if (!result.ok) {
+      setNotice({ text: 'Sordino is restarting. Try again in a moment.', problem: true })
+      return
+    }
+    const text = addMutedSiteMessage(result.outcome)
+    if (result.outcome.kind === 'added') {
+      setSite('')
+      setIsOpen(false)
+      setNotice({ text, problem: false })
+      return
+    }
+    setNotice({ text, problem: result.outcome.kind === 'refused' })
   }
 
   if (isOpen) {
     return (
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={site}
-          onChange={(e) => setSite(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleAdd()
-            if (e.key === 'Escape') {
+      <div>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={site}
+            onChange={(e) => {
+              setSite(e.target.value)
+              setNotice(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void handleAdd()
+              if (e.key === 'Escape') {
+                setIsOpen(false)
+                setSite('')
+                setNotice(null)
+              }
+            }}
+            placeholder="example.com"
+            className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            autoFocus
+          />
+          <button
+            onClick={() => void handleAdd()}
+            disabled={!site.trim()}
+            className="px-3 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+            title="Add site"
+          >
+            <Check className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => {
               setIsOpen(false)
               setSite('')
-            }
-          }}
-          placeholder="example.com"
-          className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-          autoFocus
-        />
-        <button
-          onClick={handleAdd}
-          disabled={!site.trim()}
-          className="px-3 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-          title="Add site"
-        >
-          <Check className="w-4 h-4" />
-        </button>
-        <button
-          onClick={() => {
-            setIsOpen(false)
-            setSite('')
-          }}
-          className="px-3 py-2.5 rounded-xl bg-secondary/50 hover:bg-secondary/70 text-muted-foreground hover:text-foreground transition-colors"
-          title="Cancel"
-        >
-          <X className="w-4 h-4" />
-        </button>
+              setNotice(null)
+            }}
+            className="px-3 py-2.5 rounded-xl bg-secondary/50 hover:bg-secondary/70 text-muted-foreground hover:text-foreground transition-colors"
+            title="Cancel"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        {notice && (
+          <p
+            role="status"
+            className={cn(
+              'mt-2 text-xs',
+              notice.problem ? 'text-destructive' : 'text-muted-foreground'
+            )}
+          >
+            {notice.text}
+          </p>
+        )}
       </div>
     )
   }
 
   return (
-    <button
-      onClick={() => setIsOpen(true)}
-      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-secondary/40 hover:bg-secondary/60 text-sm font-medium transition-colors"
-    >
-      <Plus className="w-4 h-4" />
-      Add site
-    </button>
+    <div>
+      <button
+        onClick={() => {
+          setIsOpen(true)
+          setNotice(null)
+        }}
+        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-secondary/40 hover:bg-secondary/60 text-sm font-medium transition-colors"
+      >
+        <Plus className="w-4 h-4" />
+        Add site
+      </button>
+      {notice && (
+        <p role="status" className="mt-2 text-xs text-muted-foreground">
+          {notice.text}
+        </p>
+      )}
+    </div>
   )
 }
 
