@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+/* global chrome */
 // Verification session daemon: holds a Playwright Chromium context with the
 // built Sordino extension loaded, plus an optional local fake muted-site server.
 // Spoken to over HTTP by control-sordino.mjs. Not for production use.
+// `chrome` is referenced only inside page/service-worker evaluate callbacks.
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createSiteServer } from 'node:http'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -150,7 +152,7 @@ async function doctor() {
     alarm = await sw.evaluate(() => chrome.alarms.get('muting-change'))
     swOk = true
   } catch {
-    alarm = null
+    // alarm stays null; service worker is not answering
   }
   const ok = Boolean(ctx && sw && extensionId && swOk)
   return {
@@ -287,7 +289,6 @@ const server = createHttpServer(async (req, res) => {
     if (path === '/site/eval' && req.method === 'POST') {
       const page = await getPage(body.name ?? 'site')
       const result = await page.evaluate(async (expression) => {
-        // eslint-disable-next-line no-eval -- verification-only inspection
         return await eval(expression)
       }, body.expression)
       return json(res, 200, { ok: true, result })
@@ -316,7 +317,6 @@ const server = createHttpServer(async (req, res) => {
       // Read-only inspection helper for alarms/storage the UI surfaces.
       // Expression is evaluated inside the service worker (e.g. chrome.alarms.get(...)).
       const result = await sw.evaluate(async (expression) => {
-        // eslint-disable-next-line no-eval -- verification-only inspection
         return await eval(expression)
       }, body.expression)
       return json(res, 200, { ok: true, result })
