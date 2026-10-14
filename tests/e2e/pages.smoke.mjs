@@ -12,7 +12,7 @@
 //
 // Usage: node tests/e2e/pages.smoke.mjs [distDir]   (default: .output/chrome-mv3)
 // Env:   see harness.mjs
-import { builtExtension, collectErrors, launchExtension } from './harness.mjs'
+import { builtExtension, collectErrors, installedWelcome, launchExtension } from './harness.mjs'
 
 const { dist: DIST, manifest } = builtExtension()
 const FONTS = ['16px "DM Sans"', '16px "Cormorant Garamond"']
@@ -37,6 +37,26 @@ const fontsRendered = (page) =>
 let exitCode
 try {
   const base = `chrome-extension://${new URL(sw.url()).host}`
+
+  const welcome = await installedWelcome(ctx, base)
+  collectErrors(welcome, errors, 'welcome')
+  await welcome.reload({ waitUntil: 'networkidle' })
+  await welcome.getByRole('button', { name: 'Start', exact: true }).waitFor()
+  const welcomeFonts = await fontsRendered(welcome)
+  for (const colorScheme of ['light', 'dark']) {
+    await welcome.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
+    await welcome.setViewportSize({ width: 390, height: 844 })
+    const fits = await welcome.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+    if (!fits) failures.push(`welcome overflows at 390px in ${colorScheme}`)
+  }
+  const consent = await sw.evaluate(() => chrome.storage.local.get('config'))
+  if (consent.config.firstRunDone || consent.config.schedules.length)
+    failures.push('fresh setup activated before Start')
+  for (const [font, ok] of Object.entries(welcomeFonts)) {
+    if (!ok) failures.push(`welcome: font ${font} did not load`)
+  }
 
   const popupPath = manifest.action?.default_popup
   const optionsPath = manifest.options_ui?.page
@@ -82,7 +102,7 @@ try {
   if (errors.length) failures.push(`${errors.length} page error(s)`)
   console.log(
     failures.length === 0
-      ? 'PASS popup and settings load with self-hosted fonts, no network requests and no errors'
+      ? 'PASS welcome, popup and settings load with self-hosted fonts, no network requests and no errors'
       : `FAIL ${failures.join('; ')}`
   )
   exitCode = failures.length === 0 ? 0 : 1

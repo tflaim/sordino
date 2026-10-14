@@ -238,7 +238,7 @@ describe('Sordino store', () => {
     await openStore({ storage, clock: clock.now })
     expect(storage.writes).toEqual([
       {
-        config: { version: 2, schedules: [workHours], ownSites: [] },
+        config: { version: 2, firstRunDone: true, schedules: [workHours], ownSites: [] },
         state: { version: 2, mode: null },
         usage: { version: 2 },
       },
@@ -254,7 +254,7 @@ describe('Sordino store', () => {
     await openStore({ storage, clock: fixedClock('2026-10-05T10:00').now })
     expect(storage.writes).toEqual([
       {
-        config: { version: 2, schedules: [workHours], ownSites: [] },
+        config: { version: 2, firstRunDone: true, schedules: [workHours], ownSites: [] },
         state: { version: 2, mode: null },
         usage: { version: 2 },
       },
@@ -278,7 +278,7 @@ describe('Sordino store', () => {
         'Added example.org. The path was ignored, so the whole site is muted.'
       )
       expect(storage.writes).toEqual([
-        { config: { version: 2, schedules: [workHours], ownSites: [example] } },
+        { config: { version: 2, firstRunDone: true, schedules: [workHours], ownSites: [example] } },
       ])
       expect(await store.settle()).toEqual(before)
     })
@@ -344,7 +344,7 @@ describe('Sordino store', () => {
         outcome: { kind: 'already-muted', site: reddit, via: { kind: 'own' } },
       })
       expect(storage.writes).toEqual([
-        { config: { version: 2, schedules: [workHours], ownSites: [reddit] } },
+        { config: { version: 2, firstRunDone: true, schedules: [workHours], ownSites: [reddit] } },
       ])
     })
 
@@ -366,7 +366,7 @@ describe('Sordino store', () => {
         outcome: { kind: 'not-on-list' },
       })
       expect(storage.writes).toEqual([
-        { config: { version: 2, schedules: [workHours], ownSites: [] } },
+        { config: { version: 2, firstRunDone: true, schedules: [workHours], ownSites: [] } },
       ])
     })
 
@@ -431,18 +431,19 @@ describe('Sordino store', () => {
 
     it('adopts custom sites into a config that already has schedules, and an empty list stays empty', async () => {
       const storage = memoryStorage({
-        config: { version: 2, schedules: [workHours] },
+        config: { version: 2, firstRunDone: true, schedules: [workHours] },
         sordino_settings: { schedules: [], customSites: ['example.org'] },
       })
       await openStore({ storage, clock: fixedClock('2026-10-05T10:00').now })
       expect((await openReader(storage).read('config')).config).toEqual({
         version: 2,
+        firstRunDone: true,
         schedules: [workHours],
         ownSites: [example],
       })
 
       const emptied = memoryStorage({
-        config: { version: 2, schedules: [workHours], ownSites: [] },
+        config: { version: 2, firstRunDone: true, schedules: [workHours], ownSites: [] },
         sordino_settings: { customSites: ['example.org'] },
       })
       await openStore({ storage: emptied, clock: fixedClock('2026-10-05T10:00').now })
@@ -537,7 +538,7 @@ describe('Sordino store', () => {
 
   it('an empty schedule list stays empty, and is not refilled from the 1.x key', async () => {
     const storage = memoryStorage({
-      config: { version: 2, schedules: [] },
+      config: { version: 2, firstRunDone: true, schedules: [] },
       ...legacy,
     })
     const store = await openStore({ storage, clock: fixedClock('2026-10-05T10:00').now })
@@ -548,8 +549,8 @@ describe('Sordino store', () => {
     ])
   })
 
-  it('seeds the suggested schedules when nothing is stored, and they can be edited and deleted', async () => {
-    const storage = memoryStorage()
+  it('adopts suggested schedules for existing users, and they can be edited and deleted', async () => {
+    const storage = memoryStorage({ sordino_settings: {} })
     const clock = fixedClock('2026-10-05T10:00')
     const store = await openStore({ storage, clock: clock.now })
     expect((await openReader(storage).read('config')).config.schedules).toEqual(SUGGESTED_SCHEDULES)

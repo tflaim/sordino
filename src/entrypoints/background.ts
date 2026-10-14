@@ -9,7 +9,7 @@ import {
 } from '@/shared/muted-sites'
 import { clockTime } from '@/shared/status'
 import type { SordinoSettings, MessageType } from '@/shared/types'
-import { getLocalDateString, MAX_QUICK_BYPASSES } from '@/shared/types'
+import { getLocalDateString } from '@/shared/types'
 import { applyEffects } from '@/store/adapters/apply-effects'
 import { chromeStorage } from '@/store/adapters/chrome-storage'
 import { serveCommands } from '@/store/adapters/runtime'
@@ -122,7 +122,7 @@ async function hasCountedBlock(blockKey: string): Promise<boolean> {
 
 async function mutedList(settings: SordinoSettings, reader: SordinoReader): Promise<MutedList> {
   const { config } = await reader.read('config')
-  return { categories: settings.categories, ownSites: config.ownSites }
+  return { categories: config.categories ?? settings.categories, ownSites: config.ownSites }
 }
 
 // Get Monday of a given date's week (local timezone)
@@ -256,6 +256,7 @@ function getSiteFromUrl(url: string): string {
 
 async function handleMessage(message: MessageType, reader: SordinoReader): Promise<unknown> {
   const settings = await checkBypassReset()
+  const { config } = await reader.read('config')
 
   switch (message.type) {
     case 'GET_BLOCK_STATUS': {
@@ -303,14 +304,14 @@ async function handleMessage(message: MessageType, reader: SordinoReader): Promi
         reason: muting.source.kind === 'schedule' ? muting.source.name : 'Mute now',
         timeRemaining: muting.until === null ? undefined : `until ${clockTime(muting.until)}`,
         bypassesRemaining:
-          (settings.maxBypasses ?? MAX_QUICK_BYPASSES) - settings.bypassState.quickBypassesUsed,
+          (config.maxBypasses ?? settings.maxBypasses) - settings.bypassState.quickBypassesUsed,
         bypassDuration: settings.bypassDurationMinutes ?? 5,
         scaffoldingMode: settings.scaffoldingMode ?? false,
       }
     }
 
     case 'USE_BYPASS': {
-      const maxBypasses = settings.maxBypasses ?? MAX_QUICK_BYPASSES
+      const maxBypasses = config.maxBypasses ?? settings.maxBypasses
       const remaining = maxBypasses - settings.bypassState.quickBypassesUsed
       if (remaining <= 0) {
         return { success: false, remaining: 0 }
@@ -377,7 +378,7 @@ async function handleMessage(message: MessageType, reader: SordinoReader): Promi
           emergencyRefreshesUsed: (s.weeklyStats.emergencyRefreshesUsed || 0) + 1,
         },
       }))
-      return { success: true, remaining: settings.maxBypasses ?? MAX_QUICK_BYPASSES }
+      return { success: true, remaining: config.maxBypasses ?? settings.maxBypasses }
     }
 
     case 'CLEAR_BYPASS': {
@@ -414,8 +415,14 @@ export default defineBackground(() => {
   chrome.runtime.onStartup.addListener(() => {
     return installMuteThisSiteMenu().then(() => settle())
   })
-  chrome.runtime.onInstalled.addListener(() => {
-    return installMuteThisSiteMenu()
+  chrome.runtime.onInstalled.addListener((details) => {
+    return ready
+      .then(async () => {
+        const { config } = await reader.read('config')
+        if (details.reason === 'install' && !config.firstRunDone)
+          await chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') })
+      })
+      .then(() => installMuteThisSiteMenu())
       .then(() => checkBypassReset()) // initialises the 1.x settings on install
       .catch((error) => console.error('Sordino: Error in onInstalled handler', error))
       .then(() => settle())
@@ -424,7 +431,10 @@ export default defineBackground(() => {
   // Schedules live in `config`. A change re-settles the badge and alarms.
   // The overlay still asks GET_BLOCK_STATUS until it watches storage itself (#5),
   // and a Mute now or Pause re-checks open tabs.
-  reader.watch(['config'], () => void settle())
+  reader.watch(['config'], () => {
+    void settle()
+    void broadcastSettingsUpdate()
+  })
   reader.watch(['state'], () => void broadcastSettingsUpdate())
 
   // 1.x messages from the overlay and settings page, until their tickets
