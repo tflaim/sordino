@@ -1,7 +1,12 @@
 // The Sordino store: the one writer of Sordino's persisted state, in the
 // background only (ADR-0004). Its interface is `openStore`, `dispatch` and `settle`.
-import { modeEnd, runningMode } from '@/shared/muting'
-import { alreadyMuted, parseMutedSite, type CategorySites } from '@/shared/muted-sites'
+import { decideMuting, modeEnd, runningMode } from '@/shared/muting'
+import {
+  alreadyMuted,
+  matchMutedSite,
+  parseMutedSite,
+  type CategorySites,
+} from '@/shared/muted-sites'
 import { validateSchedule, type Schedule } from '@/shared/schedule'
 import {
   mayRun,
@@ -63,14 +68,26 @@ export async function openStore(deps: {
     // Categories still live on the 1.x key until settings move (#12). Schedules
     // do not: `config.schedules` is the list, and a later 1.x edit does not change it.
     let categories: CategorySites[] = []
-    if (parsed.type === 'add-muted-site') {
+    if (
+      parsed.type === 'add-muted-site' ||
+      parsed.type === 'record-mute' ||
+      parsed.type === 'turn-back'
+    ) {
       try {
         categories = legacyCategories((await storage.read(['sordino_settings'])).sordino_settings)
       } catch (e) {
         return refuse('storage-failed', String(e))
       }
     }
-    const { outcome, next } = handle(parsed, docs, now, categories)
+    if (
+      (parsed.type === 'record-mute' || parsed.type === 'turn-back') &&
+      sender.kind === 'tab' &&
+      matchMutedSite(sender.url, { categories, ownSites: docs.config.ownSites })?.id !==
+        parsed.siteId
+    ) {
+      return refuse('not-allowed', 'site does not match sender URL')
+    }
+    const { outcome, next } = handle(parsed, docs, now, categories, sender)
     const changed = changedKeys(docs, { ...docs, ...next })
     if (changed.length) {
       const update = pick({ ...docs, ...next }, changed)
@@ -104,10 +121,65 @@ function handle(
   command: Command,
   docs: StoredDocs,
   now: number,
-  categories: readonly CategorySites[]
+  categories: readonly CategorySites[],
+  sender: Sender
 ): { outcome: Outcome<Command>; next: Partial<StoredDocs> } {
   const running = runningMode(docs.state.mode, now)
   switch (command.type) {
+    case 'record-mute':
+    case 'turn-back': {
+      const key = sender.kind === 'tab' ? `tab:${sender.tabId}` : `visit:${command.navigationId}`
+      const offers = docs.state.muteOffers ?? {}
+      const previous = offers[key]
+      const same =
+        previous?.siteId === command.siteId && previous.navigationId === command.navigationId
+      if (command.type === 'turn-back') {
+        if (!same) return { outcome: { kind: 'not-recorded' }, next: {} }
+        if (previous.turnedBack) return { outcome: { kind: 'already-turned-back' }, next: {} }
+        return {
+          outcome: { kind: 'turned-back' },
+          next: {
+            state: {
+              ...docs.state,
+              muteOffers: { ...offers, [key]: { ...previous, turnedBack: true } },
+            },
+          },
+        }
+      }
+      if (same)
+        return { outcome: { kind: 'already-recorded', offeredAt: previous.offeredAt }, next: {} }
+      if (
+        !decideMuting(docs.config.schedules, docs.state.mode, now).muted ||
+        !matchMutedSite(`https://${command.siteId}/`, {
+          categories,
+          ownSites: docs.config.ownSites,
+        })
+      ) {
+        return { outcome: { kind: 'not-muted', offeredAt: null }, next: {} }
+      }
+      // One latest offer per tab, bounded across closed tabs. Duplicate messages never restart a wait.
+      const kept = Object.entries(offers)
+        .filter(([id]) => id !== key)
+        .sort((a, b) => a[1].offeredAt - b[1].offeredAt)
+        .slice(-127)
+      return {
+        outcome: { kind: 'recorded', offeredAt: now },
+        next: {
+          state: {
+            ...docs.state,
+            muteOffers: {
+              ...Object.fromEntries(kept),
+              [key]: {
+                siteId: command.siteId,
+                navigationId: command.navigationId,
+                offeredAt: now,
+                turnedBack: false,
+              },
+            },
+          },
+        },
+      }
+    }
     case 'mute-now':
     case 'pause': {
       const until = modeEnd(command.length, now)
