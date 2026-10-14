@@ -18,6 +18,15 @@ export interface ConfigDoc {
 export interface StateDoc {
   version: typeof VERSION
   mode: Mode | null
+  /** Latest visit per tab; offer time is the store's clock, never the page's. */
+  muteOffers?: Record<string, MuteOffer>
+}
+
+export interface MuteOffer {
+  siteId: string
+  navigationId: string
+  offeredAt: number
+  turnedBack: boolean
 }
 
 /** Daily counts: filled in by the Usage ticket (#9). */
@@ -68,7 +77,30 @@ export const parseUsage = (): UsageDoc => ({ version: VERSION })
 /** Repairs field by field: a malformed field falls back to its default, the rest is kept. */
 export function parseState(raw: unknown): StateDoc {
   const doc = isRecord(raw) ? raw : {}
-  return { version: VERSION, mode: parseMode(doc.mode) }
+  const muteOffers: Record<string, MuteOffer> = {}
+  if (isRecord(doc.muteOffers)) {
+    for (const [key, value] of Object.entries(doc.muteOffers).slice(-128)) {
+      if (!isRecord(value)) continue
+      if (
+        typeof value.siteId !== 'string' ||
+        typeof value.navigationId !== 'string' ||
+        !isTime(value.offeredAt) ||
+        typeof value.turnedBack !== 'boolean'
+      )
+        continue
+      muteOffers[key] = {
+        siteId: value.siteId,
+        navigationId: value.navigationId,
+        offeredAt: value.offeredAt,
+        turnedBack: value.turnedBack,
+      }
+    }
+  }
+  return {
+    version: VERSION,
+    mode: parseMode(doc.mode),
+    ...(Object.keys(muteOffers).length ? { muteOffers } : {}),
+  }
 }
 
 function parseMode(raw: unknown): Mode | null {
