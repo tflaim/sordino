@@ -64,3 +64,17 @@ export function collectErrors(page, errors, label = 'page', onError = () => {}) 
     }
   })
 }
+
+// Observe the actual onInstalled tab, rather than opening First run ourselves.
+export async function installedWelcome(ctx, base) {
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline) {
+    const page = ctx.pages().find((page) => page.url() === `${base}/welcome.html`)
+    if (page) {
+      await page.waitForLoadState('domcontentloaded')
+      return page
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  throw new Error('Fresh install did not open First run')
+}

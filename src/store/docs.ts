@@ -1,17 +1,23 @@
 // The three stored documents and how raw storage values become them.
 // Unversioned data is v1 (the 1.x `sordino_settings` key); these are v2.
 import type { Mode } from '@/shared/muting'
+import type { Category } from '@/shared/types'
 import { adoptInputs, storedMutedSite, type MutedSite } from '@/shared/muted-sites'
 import { schedulesFromConfig, schedulesFromLegacy, type Schedule } from '@/shared/schedule'
 import { legacyCategories, legacyCustomSites } from './legacy-sites'
 
 export const VERSION = 2
 
-/** Schedules and sites added by hand. Bypass options, own line and Stillness come later. */
+/** Schedules, own sites and First run choices. The remaining settings move in #8/#12. */
 export interface ConfigDoc {
   version: typeof VERSION
   schedules: Schedule[]
   ownSites: MutedSite[]
+  firstRunDone: boolean
+  /** Set by Start; older installations retain the legacy settings owner until #8/#12. */
+  categories?: Category[]
+  maxBypasses?: number
+  bypassWaitSeconds?: number
 }
 
 /** What is happening now: the latest Mute now or Pause (null = on schedule). */
@@ -34,10 +40,28 @@ export interface UsageDoc {
  */
 export function resolveConfig(rawConfig: unknown, legacySettings: unknown): ConfigDoc {
   const record = isRecord(rawConfig) ? rawConfig : null
+  const legacy = isRecord(legacySettings) ? legacySettings : null
+  // Existing v1/v2 installations have already agreed. Persist false before
+  // the install handler creates the legacy compatibility settings.
+  const firstRunDone =
+    typeof record?.firstRunDone === 'boolean'
+      ? record.firstRunDone
+      : record !== null || legacy !== null
   return {
     version: VERSION,
-    schedules:
-      record && Array.isArray(record.schedules)
+    firstRunDone,
+    ...(Array.isArray(record?.categories) && {
+      categories: legacyCategories(record) as Category[],
+    }),
+    ...(record?.maxBypasses !== undefined && {
+      maxBypasses: boundedOption(record.maxBypasses, 3, 1, 10),
+    }),
+    ...(record?.bypassWaitSeconds !== undefined && {
+      bypassWaitSeconds: boundedOption(record.bypassWaitSeconds, 5, 0, 15),
+    }),
+    schedules: !firstRunDone
+      ? []
+      : record && Array.isArray(record.schedules)
         ? schedulesFromConfig(record.schedules)
         : schedulesFromLegacy(legacySettings),
     ownSites:
@@ -83,3 +107,9 @@ export const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
 const isTime = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+
+function boundedOption(raw: unknown, fallback: number, min: number, max: number): number {
+  return typeof raw === 'number' && Number.isInteger(raw) && raw >= min && raw <= max
+    ? raw
+    : fallback
+}
