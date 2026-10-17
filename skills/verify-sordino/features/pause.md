@@ -24,7 +24,7 @@ Preconditions:
 
 - **Open popup.** Run `popup open` and `popup dismiss-tip`.
 - **Start Pause.** Run
-  `node .cursor/skills/verify-sordino/scripts/control-sordino.mjs popup click --role button --name '^Pause for 1 hour'`.
+  `node skills/verify-sordino/scripts/control-sordino.mjs popup click --role button --name '^Pause for 1 hour'`.
   Then `popup wait-text --pattern '^Paused until'`.
 - **Visit muted site.** Run `site open` then
   `site eval --expr 'document.getElementById("sordino-overlay") === null'`.

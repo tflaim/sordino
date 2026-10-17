@@ -1,7 +1,7 @@
 # Open settings
 
 The popup gear opens Sordino's options page (Settings / Usage). Settings hold
-schedules, muted-site categories, custom sites, and bypass options.
+schedules, muted-site categories, sites added by hand, and bypass options.
 
 ## Sub-features
 
@@ -22,7 +22,7 @@ Preconditions:
 
 - **Open popup.** Run `popup open` and `popup dismiss-tip`.
 - **Open settings from gear.** Run
-  `node .cursor/skills/verify-sordino/scripts/control-sordino.mjs popup open-settings`.
+  `node skills/verify-sordino/scripts/control-sordino.mjs popup open-settings`.
   Options page loads with heading `Sordino`.
 - **Switch tabs.** Run
   `options click --role button --name '^Usage$'` then

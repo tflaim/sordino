@@ -24,7 +24,7 @@ feature file as the recipe.
   Overlay exceptions (`#sordino-overlay`, `#sordino-bypass`) are stable product
   IDs already used by `tests/e2e`.
 - Treat every command as literal. Keep quoted names and flags unchanged.
-- Run all actions through `node .cursor/skills/verify-sordino/scripts/control-sordino.mjs`.
+- Run all actions through `node skills/verify-sordino/scripts/control-sordino.mjs`.
 - After mutating muting state, restore with **Back to schedule** when the
   feature file says so. Do not remove proof artifacts during cleanup.
 
@@ -64,4 +64,7 @@ handles, required state, commands, and observable proof.
 - [Open settings](./open-settings.md) — open the options page from the popup
   gear and confirm Settings / Usage.
 - [Add custom site](./add-custom-site.md) — add a domain from the popup and see
-  it under Custom Sites in settings.
+  it under Added by hand in settings.
+- [Mute this site](./mute-this-site.md) — the page context-menu command. The
+  harness cannot open Chromium's native menu, so this entry point stays
+  unverified.

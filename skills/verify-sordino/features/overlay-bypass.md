@@ -27,7 +27,7 @@ Preconditions:
   `#sordino-bypass` shows text matching `Bypass for` and a count like
   `N quick bypasses left today`.
 - **Take bypass.** Run
-  `node .cursor/skills/verify-sordino/scripts/control-sordino.mjs site click --selector '#sordino-bypass'`.
+  `node skills/verify-sordino/scripts/control-sordino.mjs site click --selector '#sordino-bypass'`.
   Then
   `… site wait --selector '#sordino-overlay' --state detached`
   and
