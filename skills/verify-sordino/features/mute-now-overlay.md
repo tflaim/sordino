@@ -23,11 +23,11 @@ Preconditions:
 - `control-sordino doctor` reports `"ok": true`.
 - Muting is not already forced by an unrelated leftover mode (fresh profile).
 
-- **Open popup.** Run `node .cursor/skills/verify-sordino/scripts/control-sordino.mjs popup open`. Heading `Sordino` is visible.
-- **Dismiss tip.** Run `node .cursor/skills/verify-sordino/scripts/control-sordino.mjs popup dismiss-tip`. First-run card is gone or was already dismissed.
-- **Start Mute now.** Run `node .cursor/skills/verify-sordino/scripts/control-sordino.mjs popup click --role button --name '^Mute now for 1 hour'`. Then `… popup wait-text --pattern '^Muting until .* · Mute now$'`. Status shows Mute now.
-- **Confirm alarm.** Run `node .cursor/skills/verify-sordino/scripts/control-sordino.mjs sw-eval --expr 'chrome.alarms.get("muting-change")'`. Result has a `scheduledTime`.
-- **Visit muted site.** Run `node .cursor/skills/verify-sordino/scripts/control-sordino.mjs site open` then `… site wait --selector '#sordino-overlay'`. Overlay is attached.
+- **Open popup.** Run `node skills/verify-sordino/scripts/control-sordino.mjs popup open`. Heading `Sordino` is visible.
+- **Dismiss tip.** Run `node skills/verify-sordino/scripts/control-sordino.mjs popup dismiss-tip`. First-run card is gone or was already dismissed.
+- **Start Mute now.** Run `node skills/verify-sordino/scripts/control-sordino.mjs popup click --role button --name '^Mute now for 1 hour'`. Then `… popup wait-text --pattern '^Muting until .* · Mute now$'`. Status shows Mute now.
+- **Confirm alarm.** Run `node skills/verify-sordino/scripts/control-sordino.mjs sw-eval --expr 'chrome.alarms.get("muting-change")'`. Result has a `scheduledTime`.
+- **Visit muted site.** Run `node skills/verify-sordino/scripts/control-sordino.mjs site open` then `… site wait --selector '#sordino-overlay'`. Overlay is attached.
 - **Proof.** Run `… screenshot --page site --path mute-now-overlay/overlay.png` and `… screenshot --page popup --path mute-now-overlay/popup.png` plus `… aria --page popup --path mute-now-overlay/popup.aria.txt`. Artifacts show Sordino overlay on the fake reddit page and Mute now status in the popup.
 
 ## Gotchas

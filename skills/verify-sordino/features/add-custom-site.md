@@ -49,5 +49,5 @@ Preconditions:
   that only contains that textbox has not proved the site was saved.
 - Adding a site does not start Mute now by itself; overlay proof needs muting
   in effect and a mapped host.
-- Remove `example.com` from Custom Sites during fixture cleanup if you reuse a
+- Remove `example.com` from Added by hand during fixture cleanup if you reuse a
   profile; retain proof artifacts.

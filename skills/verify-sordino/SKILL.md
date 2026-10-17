@@ -29,7 +29,7 @@ npm ci
 npm run build:chrome
 # once per machine — uses the Playwright version pinned in package.json (currently
 # 1.56.1). Do NOT run bare `npx playwright install` (that can pull a newer CLI):
-node .cursor/skills/verify-sordino/scripts/install-chromium.mjs
+node skills/verify-sordino/scripts/install-chromium.mjs
 ```
 
 `install-chromium.mjs` runs the local `node_modules/playwright` CLI. If that
@@ -55,14 +55,14 @@ Start a disposable session (maps `www.reddit.com` to a local fake page by defaul
 that host is in the Social category, so it mutes while muting is in effect):
 
 ```bash
-node .cursor/skills/verify-sordino/scripts/control-sordino.mjs launch --run-id demo
+node skills/verify-sordino/scripts/control-sordino.mjs launch --run-id demo
 # Copy and run the `export` field from launch's JSON stdout, e.g.
 #   "export": "export SORDINO_VERIFY_DIR=/var/folders/.../sordino-verify-demo"
 # macOS: the directory is under $TMPDIR (often /var/folders/...), not necessarily /tmp.
 # Linux: often /tmp/sordino-verify-demo. Never hardcode a /tmp path from docs.
 # A clean shell is: env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}"
 # Pass TMPDIR through. Launch uses os.tmpdir(), and Playwright's Chromium cache
-# is under $HOME/Library/Caches/ms-playwright.
+# is under $HOME/Library/Caches/ms-playwright on macOS and ~/.cache/ms-playwright on Linux.
 ```
 
 Launch stdout is a JSON object that includes `"ready": true` and the `export`
@@ -78,7 +78,7 @@ port alone is not enough — the service worker must answer.
 Teardown (keeps evidence; see Cleanup):
 
 ```bash
-node .cursor/skills/verify-sordino/scripts/control-sordino.mjs cleanup
+node skills/verify-sordino/scripts/control-sordino.mjs cleanup
 ```
 
 Env:
@@ -98,7 +98,7 @@ user's everyday browser for verification.
 ## Doctor
 
 ```bash
-node .cursor/skills/verify-sordino/scripts/control-sordino.mjs doctor
+node skills/verify-sordino/scripts/control-sordino.mjs doctor
 ```
 
 If `SORDINO_VERIFY_DIR` is unset, doctor exits with a hint to run launch and use
@@ -106,7 +106,7 @@ its printed `export` line (macOS: path under `$TMPDIR`).
 
 Require `"ok": true`, a non-null `extensionId`, `manifestName` containing
 `Sordino`, `dist` pointing at `.output/chrome-mv3`, and `artifactsDir` under
-`.cursor/skills/verify-sordino/artifacts/<run-id>/`. If anything looks off, run
+`skills/verify-sordino/artifacts/<run-id>/`. If anything looks off, run
 doctor before retrying drive steps.
 
 ## Drive
@@ -130,10 +130,10 @@ the feature map. Stable handles already in the product:
 Example — open popup and start Mute now for 1 hour:
 
 ```bash
-node .cursor/skills/verify-sordino/scripts/control-sordino.mjs popup open
-node .cursor/skills/verify-sordino/scripts/control-sordino.mjs popup dismiss-tip
-node .cursor/skills/verify-sordino/scripts/control-sordino.mjs popup click --role button --name '^Mute now for 1 hour'
-node .cursor/skills/verify-sordino/scripts/control-sordino.mjs popup wait-text --pattern '^Muting until .* · Mute now$'
+node skills/verify-sordino/scripts/control-sordino.mjs popup open
+node skills/verify-sordino/scripts/control-sordino.mjs popup dismiss-tip
+node skills/verify-sordino/scripts/control-sordino.mjs popup click --role button --name '^Mute now for 1 hour'
+node skills/verify-sordino/scripts/control-sordino.mjs popup wait-text --pattern '^Muting until .* · Mute now$'
 ```
 
 Do not seed muting by writing `chrome.storage` or calling store commands from
@@ -141,7 +141,7 @@ eval. Mute now, Pause, Bypass, and settings changes must go through the UI.
 
 ## Evidence
 
-Artifacts live in `.cursor/skills/verify-sordino/artifacts/<run-id>/` and
+Artifacts live in `skills/verify-sordino/artifacts/<run-id>/` and
 **survive** cleanup. Proof standards:
 
 - Exercise the real user path (popup / overlay / options), not internal setters.
@@ -155,20 +155,20 @@ Artifacts live in `.cursor/skills/verify-sordino/artifacts/<run-id>/` and
   prefer `#sordino-overlay` presence plus screenshot.
 
 ```bash
-node .cursor/skills/verify-sordino/scripts/control-sordino.mjs screenshot --page site --path mute-now-overlay/overlay.png
-node .cursor/skills/verify-sordino/scripts/control-sordino.mjs aria --page popup --path mute-now-overlay/popup.aria.txt
-node .cursor/skills/verify-sordino/scripts/control-sordino.mjs sw-eval --expr 'chrome.alarms.get("muting-change")'
+node skills/verify-sordino/scripts/control-sordino.mjs screenshot --page site --path mute-now-overlay/overlay.png
+node skills/verify-sordino/scripts/control-sordino.mjs aria --page popup --path mute-now-overlay/popup.aria.txt
+node skills/verify-sordino/scripts/control-sordino.mjs sw-eval --expr 'chrome.alarms.get("muting-change")'
 ```
 
 ## Cleanup
 
 ```bash
-node .cursor/skills/verify-sordino/scripts/control-sordino.mjs cleanup
+node skills/verify-sordino/scripts/control-sordino.mjs cleanup
 ```
 
 Stops the daemon started by this run, closes Chromium, deletes the throwaway
 profile and `SORDINO_VERIFY_DIR`. Does **not** delete
-`.cursor/skills/verify-sordino/artifacts/<run-id>/`. Never kill by process name
+`skills/verify-sordino/artifacts/<run-id>/`. Never kill by process name
 (`pkill chromium`); only cleanup (or the daemon's own `/cleanup`) should stop
 what launch started.
 
@@ -179,8 +179,8 @@ launch.
 
 | Script | Invocation |
 |--------|------------|
-| Install Chromium (pinned) | `node .cursor/skills/verify-sordino/scripts/install-chromium.mjs` |
-| CLI | `node .cursor/skills/verify-sordino/scripts/control-sordino.mjs <command>` |
+| Install Chromium (pinned) | `node skills/verify-sordino/scripts/install-chromium.mjs` |
+| CLI | `node skills/verify-sordino/scripts/control-sordino.mjs <command>` |
 | Daemon | started only by `launch`; do not run by hand |
 
 `control-sordino.mjs --help` prints the full command list. Repo smoke tests

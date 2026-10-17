@@ -24,7 +24,7 @@ feature file as the recipe.
   Overlay exceptions (`#sordino-overlay`, `#sordino-bypass`) are stable product
   IDs already used by `tests/e2e`.
 - Treat every command as literal. Keep quoted names and flags unchanged.
-- Run all actions through `node .cursor/skills/verify-sordino/scripts/control-sordino.mjs`.
+- Run all actions through `node skills/verify-sordino/scripts/control-sordino.mjs`.
 - After mutating muting state, restore with **Back to schedule** when the
   feature file says so. Do not remove proof artifacts during cleanup.
 

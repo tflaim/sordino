@@ -18,9 +18,9 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const REPO_ROOT = resolve(__dirname, '../../../..')
+const REPO_ROOT = resolve(__dirname, '../../..')
 const DEFAULT_DIST = join(REPO_ROOT, '.output/chrome-mv3')
-const DEFAULT_ARTIFACTS_ROOT = join(REPO_ROOT, '.cursor/skills/verify-sordino/artifacts')
+const DEFAULT_ARTIFACTS_ROOT = join(REPO_ROOT, 'skills/verify-sordino/artifacts')
 
 function usage(exitCode = 1) {
   console.error(`Usage:
@@ -72,7 +72,7 @@ function sessionPath() {
     console.error(`FAIL SORDINO_VERIFY_DIR is not set.
 
 Run launch first, then copy and run the \`export\` field from its JSON stdout, e.g.:
-  node .cursor/skills/verify-sordino/scripts/control-sordino.mjs launch --run-id demo
+  node skills/verify-sordino/scripts/control-sordino.mjs launch --run-id demo
   # stdout includes: "export": "export SORDINO_VERIFY_DIR=..."
   # On macOS that path is under $TMPDIR (often /var/folders/...), not always /tmp.
   eval "$(...paste the export line...)"   # or run the export line as printed

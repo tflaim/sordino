@@ -13,7 +13,7 @@ the popup shows for that outcome.
 
 ## How to get to it (user POV)
 
-- Right-click a page, frame, link, or image on an `http` or `https` page → **Mute this site**.
+- Right-click a page, frame, selection, link, image, video, or audio on an `http` or `https` page → **Mute this site**.
 - Afterwards, Settings → Muted sites → Added by hand lists that host.
 
 ## Driving it with control-sordino
