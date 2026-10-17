@@ -1,7 +1,7 @@
 # Open settings
 
 The popup gear opens Sordino's options page (Settings / Usage). Settings hold
-schedules, muted-site categories, custom sites, and bypass options.
+schedules, muted-site categories, sites added by hand, and bypass options.
 
 ## Sub-features
 

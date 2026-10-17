@@ -64,4 +64,7 @@ handles, required state, commands, and observable proof.
 - [Open settings](./open-settings.md) — open the options page from the popup
   gear and confirm Settings / Usage.
 - [Add custom site](./add-custom-site.md) — add a domain from the popup and see
-  it under Custom Sites in settings.
+  it under Added by hand in settings.
+- [Mute this site](./mute-this-site.md) — the page context-menu command. The
+  harness cannot open Chromium's native menu, so this entry point stays
+  unverified.

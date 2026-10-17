@@ -23,6 +23,8 @@ From a clean checkout of this branch (do not use `npm install` — it rewrites
 `package-lock.json` metadata on some npm versions):
 
 ```bash
+# /usr/bin has no node on this Mac. Homebrew's node has to come first.
+export PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 npm ci
 npm run build:chrome
 # once per machine — uses the Playwright version pinned in package.json (currently
@@ -58,6 +60,9 @@ node .cursor/skills/verify-sordino/scripts/control-sordino.mjs launch --run-id d
 #   "export": "export SORDINO_VERIFY_DIR=/var/folders/.../sordino-verify-demo"
 # macOS: the directory is under $TMPDIR (often /var/folders/...), not necessarily /tmp.
 # Linux: often /tmp/sordino-verify-demo. Never hardcode a /tmp path from docs.
+# A clean shell is: env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}"
+# Pass TMPDIR through. Launch uses os.tmpdir(), and Playwright's Chromium cache
+# is under $HOME/Library/Caches/ms-playwright.
 ```
 
 Launch stdout is a JSON object that includes `"ready": true` and the `export`
@@ -192,3 +197,7 @@ See [features/README.md](features/README.md).
   build (`.output/chrome-mv3`) into Chromium. There is no Firefox / `web-ext`
   verification path in this skill yet — prove Chrome behavior only, or extend
   the harness before claiming Firefox.
+- **Mute this site is not drivable.** The command is Chromium's native context
+  menu (`src/store/mute-this-site.ts`). A page right-click does not expose a
+  `menuitem` named Mute this site to Playwright, and `control-sordino` has no
+  command for it. Do not count a store call from `sw-eval` as that entry point.
