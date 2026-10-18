@@ -6,9 +6,8 @@ import type { ConfigDoc, StateDoc, UsageDoc } from './docs'
 
 /** The three versioned keys the store owns (decision 36). */
 export type StoredKey = 'config' | 'state' | 'usage'
-/** The 1.x settings object. Read-only, kept as rollback insurance. A config with
- * no schedule list yet takes the 1.x schedules; one with no own-site list yet
- * takes the 1.x custom sites. Categories stay here until settings move. */
+/** The 1.x settings object. The store reads it for migration only and never writes
+ * it, retaining rollback insurance. Legacy surfaces await their rebuild tickets. */
 export type LegacyKey = 'sordino_settings'
 export type StorageKey = StoredKey | LegacyKey
 

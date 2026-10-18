@@ -3,15 +3,23 @@
 import type { Mode } from '@/shared/muting'
 import { adoptInputs, storedMutedSite, type MutedSite } from '@/shared/muted-sites'
 import { schedulesFromConfig, schedulesFromLegacy, type Schedule } from '@/shared/schedule'
-import { legacyCategories, legacyCustomSites } from './legacy-sites'
+import { legacyCategories, legacyCustomSites, parseCategories } from './legacy-sites'
+import type { Category } from '@/shared/types'
 
 export const VERSION = 2
 
-/** Schedules and sites added by hand. Bypass options, own line and Stillness come later. */
+/** Portable setup. Runtime choices and budget used belong to state. */
 export interface ConfigDoc {
   version: typeof VERSION
   schedules: Schedule[]
   ownSites: MutedSite[]
+  categories: Category[]
+  maxBypasses: number
+  bypassDurationMinutes: number
+  bypassWaitSeconds: number
+  ownLine: string
+  stillness: boolean
+  firstRunDone: boolean
 }
 
 /** What is happening now: the latest Mute now or Pause (null = on schedule). */
@@ -21,8 +29,13 @@ export interface StateDoc {
 }
 
 /** Daily counts: filled in by the Usage ticket (#9). */
+export type JsonValue =
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
+
 export interface UsageDoc {
   version: typeof VERSION
+  // Usage owns the counts schema (#9); retain its additive JSON fields.
+  [key: string]: JsonValue
 }
 
 /**
@@ -34,6 +47,11 @@ export interface UsageDoc {
  */
 export function resolveConfig(rawConfig: unknown, legacySettings: unknown): ConfigDoc {
   const record = isRecord(rawConfig) ? rawConfig : null
+  const legacy = isRecord(legacySettings) ? legacySettings : null
+  const categories =
+    record && Array.isArray(record.categories)
+      ? parseCategories(record.categories)
+      : legacyCategories(legacySettings)
   return {
     version: VERSION,
     schedules:
@@ -44,9 +62,22 @@ export function resolveConfig(rawConfig: unknown, legacySettings: unknown): Conf
       record && Array.isArray(record.ownSites)
         ? parseOwnSites(record.ownSites)
         : adoptInputs(legacyCustomSites(legacySettings), {
-            categories: legacyCategories(legacySettings),
+            categories,
             ownSites: [],
           }),
+    categories,
+    maxBypasses: option(record?.maxBypasses, legacy?.maxBypasses, 3, 1, 10),
+    bypassDurationMinutes: option(
+      record?.bypassDurationMinutes,
+      legacy?.bypassDurationMinutes,
+      5,
+      1,
+      30
+    ),
+    bypassWaitSeconds: option(record?.bypassWaitSeconds, undefined, 5, 0, 15),
+    ownLine: typeof record?.ownLine === 'string' ? record.ownLine : '',
+    stillness: record?.stillness === true,
+    firstRunDone: typeof record?.firstRunDone === 'boolean' ? record.firstRunDone : legacy !== null,
   }
 }
 
@@ -63,12 +94,37 @@ function parseOwnSites(raw: unknown): MutedSite[] {
   return sites
 }
 
-export const parseUsage = (): UsageDoc => ({ version: VERSION })
+export function parseUsage(raw?: unknown): UsageDoc {
+  return isRecord(raw) && raw.version === VERSION && isJson(raw)
+    ? ({ ...raw, version: VERSION } as UsageDoc)
+    : { version: VERSION }
+}
 
-/** Repairs field by field: a malformed field falls back to its default, the rest is kept. */
+/** JSON data only: import and export must survive a file round-trip. */
+export function isJson(raw: unknown): raw is JsonValue {
+  if (raw === null || typeof raw === 'string' || typeof raw === 'boolean') return true
+  if (typeof raw === 'number') return Number.isFinite(raw)
+  if (Array.isArray(raw)) return raw.every(isJson)
+  return isRecord(raw) && Object.values(raw).every(isJson)
+}
+
+function option(
+  current: unknown,
+  legacy: unknown,
+  fallback: number,
+  min: number,
+  max: number
+): number {
+  const raw = current === undefined ? legacy : current
+  return typeof raw === 'number' && Number.isInteger(raw) && raw >= min && raw <= max
+    ? raw
+    : fallback
+}
+
+/** Repair mode while retaining additive v2 runtime fields owned by the bypass ticket. */
 export function parseState(raw: unknown): StateDoc {
   const doc = isRecord(raw) ? raw : {}
-  return { version: VERSION, mode: parseMode(doc.mode) }
+  return { ...(doc.version === VERSION ? doc : {}), version: VERSION, mode: parseMode(doc.mode) }
 }
 
 function parseMode(raw: unknown): Mode | null {

@@ -1,7 +1,7 @@
 // The Sordino store: the one writer of Sordino's persisted state, in the
 // background only (ADR-0004). Its interface is `openStore`, `dispatch` and `settle`.
 import { modeEnd, runningMode } from '@/shared/muting'
-import { alreadyMuted, parseMutedSite, type CategorySites } from '@/shared/muted-sites'
+import { alreadyMuted, parseMutedSite } from '@/shared/muted-sites'
 import { validateSchedule, type Schedule } from '@/shared/schedule'
 import {
   mayRun,
@@ -12,9 +12,8 @@ import {
   type Result,
   type Sender,
 } from './commands'
-import { parseState, parseUsage, resolveConfig } from './docs'
+import { migrateStorage, exportDocs, parseImport } from './migrate'
 import { desiredEffects, type Effect } from './effects'
-import { legacyCategories } from './legacy-sites'
 import type { Clock, StoragePort, StoredDocs, StoredKey } from './ports'
 
 export interface SordinoStore {
@@ -44,11 +43,7 @@ export async function openStore(deps: {
 }): Promise<SordinoStore> {
   const { storage, clock } = deps
   const raw = await storage.read([...KEYS, 'sordino_settings'])
-  let docs: StoredDocs = {
-    config: resolveConfig(raw.config, raw.sordino_settings),
-    state: parseState(raw.state),
-    usage: parseUsage(),
-  }
+  let docs = migrateStorage(raw)
   const stale = changedKeys(raw, docs)
   if (stale.length) await storage.write(pick(docs, stale))
 
@@ -60,17 +55,7 @@ export async function openStore(deps: {
     if (!parsed) return refuse('invalid-command', `not a Sordino command: ${describe(command)}`)
     if (!mayRun(parsed, sender)) return refuse('not-allowed', `${parsed.type} from ${sender.kind}`)
     const now = clock()
-    // Categories still live on the 1.x key until settings move (#12). Schedules
-    // do not: `config.schedules` is the list, and a later 1.x edit does not change it.
-    let categories: CategorySites[] = []
-    if (parsed.type === 'add-muted-site') {
-      try {
-        categories = legacyCategories((await storage.read(['sordino_settings'])).sordino_settings)
-      } catch (e) {
-        return refuse('storage-failed', String(e))
-      }
-    }
-    const { outcome, next } = handle(parsed, docs, now, categories)
+    const { outcome, next } = handle(parsed, docs, now)
     const changed = changedKeys(docs, { ...docs, ...next })
     if (changed.length) {
       const update = pick({ ...docs, ...next }, changed)
@@ -103,11 +88,21 @@ export async function openStore(deps: {
 function handle(
   command: Command,
   docs: StoredDocs,
-  now: number,
-  categories: readonly CategorySites[]
+  now: number
 ): { outcome: Outcome<Command>; next: Partial<StoredDocs> } {
   const running = runningMode(docs.state.mode, now)
   switch (command.type) {
+    case 'export':
+      return {
+        outcome: { kind: 'exported', file: exportDocs(docs, command.includeUsage) },
+        next: {},
+      }
+    case 'import': {
+      const imported = parseImport(command.data)
+      return imported.ok
+        ? { outcome: { kind: 'imported' }, next: imported.docs }
+        : { outcome: { kind: 'refused', reason: imported.reason }, next: {} }
+    }
     case 'mute-now':
     case 'pause': {
       const until = modeEnd(command.length, now)
@@ -161,7 +156,10 @@ function handle(
     case 'add-muted-site': {
       const parsed = parseMutedSite(command.input)
       if (!parsed.ok) return { outcome: { kind: 'refused', reason: parsed.reason }, next: {} }
-      const covered = alreadyMuted(parsed.site, { categories, ownSites: docs.config.ownSites })
+      const covered = alreadyMuted(parsed.site, {
+        categories: docs.config.categories,
+        ownSites: docs.config.ownSites,
+      })
       if (covered) {
         return {
           outcome: { kind: 'already-muted', site: covered.site, via: covered.via },
