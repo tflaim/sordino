@@ -10,8 +10,18 @@ import {
   type ScheduleReason,
 } from '@/shared/schedule'
 import { isRecord } from './docs'
+import { DEFAULT_CATEGORIES } from '@/shared/types'
 
 export type Command =
+  | { type: 'set-category'; id: string; enabled: boolean; disabledSites: string[] }
+  | { type: 'set-bypass-budget'; maxBypasses: number }
+  | {
+      type: 'start'
+      categoryIds: string[]
+      schedule: ScheduleDraft
+      maxBypasses: number
+      bypassWaitSeconds: number
+    }
   | { type: 'mute-now'; length: Length }
   | { type: 'pause'; length: Length }
   | { type: 'back-to-schedule' }
@@ -21,6 +31,13 @@ export type Command =
   | { type: 'remove-muted-site'; id: string }
 
 export interface OutcomeMap {
+  'set-category': { kind: 'saved' } | { kind: 'missing' }
+  'set-bypass-budget': { kind: 'saved' }
+
+  start:
+    | { kind: 'started' }
+    | { kind: 'already-started' }
+    | { kind: 'refused'; reasons: ScheduleReason[] }
   'mute-now': { kind: 'muting'; until: number }
   pause: { kind: 'paused'; until: number }
   'back-to-schedule': { kind: 'back-to-schedule' } | { kind: 'already-on-schedule' }
@@ -58,6 +75,9 @@ export type Sender =
  * (#5, #6); everything else is for extension pages and the background.
  */
 const SENDERS: { [T in Command['type']]: 'extension' } = {
+  start: 'extension',
+  'set-category': 'extension',
+  'set-bypass-budget': 'extension',
   'mute-now': 'extension',
   pause: 'extension',
   'back-to-schedule': 'extension',
@@ -77,6 +97,45 @@ const isLength = (v: unknown): v is Length => LENGTHS.includes(v as Length)
 export function parseCommand(raw: unknown): Command | null {
   if (!isRecord(raw)) return null
   switch (raw.type) {
+    case 'set-category':
+      return typeof raw.id === 'string' &&
+        raw.id.trim() &&
+        typeof raw.enabled === 'boolean' &&
+        Array.isArray(raw.disabledSites) &&
+        raw.disabledSites.every((site) => typeof site === 'string')
+        ? {
+            type: 'set-category',
+            id: raw.id.trim(),
+            enabled: raw.enabled,
+            disabledSites: [...new Set(raw.disabledSites)] as string[],
+          }
+        : null
+    case 'set-bypass-budget':
+      return isIntegerIn(raw.maxBypasses, 1, 10)
+        ? { type: 'set-bypass-budget', maxBypasses: raw.maxBypasses }
+        : null
+    case 'start': {
+      const schedule = coerceScheduleDraft(raw.schedule)
+      const categoryIds = raw.categoryIds
+      if (
+        !schedule ||
+        !Array.isArray(categoryIds) ||
+        categoryIds.length === 0 ||
+        !categoryIds.every(
+          (id) => typeof id === 'string' && DEFAULT_CATEGORIES.some((c) => c.id === id)
+        ) ||
+        !isIntegerIn(raw.maxBypasses, 1, 10) ||
+        !isIntegerIn(raw.bypassWaitSeconds, 0, 15)
+      )
+        return null
+      return {
+        type: 'start',
+        categoryIds: [...new Set(categoryIds)] as string[],
+        schedule,
+        maxBypasses: raw.maxBypasses,
+        bypassWaitSeconds: raw.bypassWaitSeconds,
+      }
+    }
     case 'mute-now':
     case 'pause':
       return isLength(raw.length) ? { type: raw.type, length: raw.length } : null
@@ -97,4 +156,8 @@ export function parseCommand(raw: unknown): Command | null {
     default:
       return null
   }
+}
+
+function isIntegerIn(value: unknown, min: number, max: number): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max
 }

@@ -1,8 +1,9 @@
 // The Sordino store: the one writer of Sordino's persisted state, in the
 // background only (ADR-0004). Its interface is `openStore`, `dispatch` and `settle`.
+import { DEFAULT_CATEGORIES } from '@/shared/types'
 import { modeEnd, runningMode } from '@/shared/muting'
 import { alreadyMuted, parseMutedSite, type CategorySites } from '@/shared/muted-sites'
-import { validateSchedule, type Schedule } from '@/shared/schedule'
+import { SUGGESTED_SCHEDULES, validateSchedule, type Schedule } from '@/shared/schedule'
 import {
   mayRun,
   parseCommand,
@@ -59,13 +60,20 @@ export async function openStore(deps: {
     const parsed = parseCommand(command)
     if (!parsed) return refuse('invalid-command', `not a Sordino command: ${describe(command)}`)
     if (!mayRun(parsed, sender)) return refuse('not-allowed', `${parsed.type} from ${sender.kind}`)
+    if (
+      !docs.config.firstRunDone &&
+      (parsed.type === 'mute-now' || parsed.type === 'pause' || parsed.type === 'save-schedule')
+    )
+      return refuse('not-allowed', 'Review First run and press Start before muting.')
     const now = clock()
-    // Categories still live on the 1.x key until settings move (#12). Schedules
-    // do not: `config.schedules` is the list, and a later 1.x edit does not change it.
+    // Categories use config after Start, otherwise the 1.x key until #12.
+    // Schedules do not: `config.schedules` is the list, and a later 1.x edit does not change it.
     let categories: CategorySites[] = []
     if (parsed.type === 'add-muted-site') {
       try {
-        categories = legacyCategories((await storage.read(['sordino_settings'])).sordino_settings)
+        categories =
+          docs.config.categories ??
+          legacyCategories((await storage.read(['sordino_settings'])).sordino_settings)
       } catch (e) {
         return refuse('storage-failed', String(e))
       }
@@ -108,6 +116,65 @@ function handle(
 ): { outcome: Outcome<Command>; next: Partial<StoredDocs> } {
   const running = runningMode(docs.state.mode, now)
   switch (command.type) {
+    case 'set-category': {
+      const categories = docs.config.categories
+      if (!categories?.some((category) => category.id === command.id))
+        return { outcome: { kind: 'missing' }, next: {} }
+      return {
+        outcome: { kind: 'saved' },
+        next: {
+          config: {
+            ...docs.config,
+            categories: categories.map((category) =>
+              category.id === command.id
+                ? { ...category, enabled: command.enabled, disabledSites: command.disabledSites }
+                : category
+            ),
+          },
+        },
+      }
+    }
+    case 'set-bypass-budget':
+      return {
+        outcome: { kind: 'saved' },
+        next: { config: { ...docs.config, maxBypasses: command.maxBypasses } },
+      }
+
+    case 'start': {
+      if (docs.config.firstRunDone) return { outcome: { kind: 'already-started' }, next: {} }
+      const validated = validateSchedule({
+        ...command.schedule,
+        id: 'work-hours',
+        name: 'Work hours',
+        enabled: true,
+      })
+      if (!validated.ok)
+        return { outcome: { kind: 'refused', reasons: validated.reasons }, next: {} }
+      const schedule: Schedule = { ...validated.schedule, id: 'work-hours' }
+      return {
+        outcome: { kind: 'started' },
+        next: {
+          config: {
+            ...docs.config,
+            firstRunDone: true,
+            categories: (docs.config.categories ?? DEFAULT_CATEGORIES).map((category) => ({
+              ...category,
+              enabled: command.categoryIds.includes(category.id),
+            })),
+            maxBypasses: command.maxBypasses,
+            bypassWaitSeconds: command.bypassWaitSeconds,
+            schedules: [
+              schedule,
+              ...SUGGESTED_SCHEDULES.filter((s) => s.id !== schedule.id).map((s) => ({
+                ...s,
+                enabled: false,
+                days: [...s.days],
+              })),
+            ],
+          },
+        },
+      }
+    }
     case 'mute-now':
     case 'pause': {
       const until = modeEnd(command.length, now)

@@ -1,3 +1,5 @@
+import { runtimeCommandPort } from '@/store/adapters/runtime'
+import { resolveConfig } from '@/store/docs'
 import { type SordinoSettings, DEFAULT_SETTINGS } from './types'
 
 const STORAGE_KEY = 'sordino_settings'
@@ -53,22 +55,54 @@ function mergeWithDefaults(stored: Partial<SordinoSettings>): SordinoSettings {
 }
 
 export async function getSettings(): Promise<SordinoSettings> {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([STORAGE_KEY], (result) => {
-      if (result[STORAGE_KEY]) {
-        // Merge with defaults to handle new fields added in updates
-        resolve(mergeWithDefaults(result[STORAGE_KEY]))
-      } else {
-        resolve(DEFAULT_SETTINGS)
-      }
-    })
-  })
+  const raw = await chrome.storage.local.get([STORAGE_KEY, 'config'])
+  const settings = mergeWithDefaults(raw[STORAGE_KEY] ?? {})
+  const config = resolveConfig(raw.config, raw[STORAGE_KEY])
+  // Compatibility for the existing popup/options until their store rebuild.
+  // Once Start owns a field, these pages read that same value.
+  return {
+    ...settings,
+    categories: config.categories ?? settings.categories,
+    maxBypasses: config.maxBypasses ?? settings.maxBypasses,
+    onboardingDismissed: config.firstRunDone || settings.onboardingDismissed,
+  }
 }
 
-export async function saveSettings(settings: SordinoSettings): Promise<void> {
-  return new Promise((resolve) => {
-    chrome.storage.local.set({ [STORAGE_KEY]: settings }, resolve)
-  })
+async function saveSettings(settings: SordinoSettings, before: SordinoSettings): Promise<void> {
+  const raw = await chrome.storage.local.get(['config'])
+  const config = resolveConfig(raw.config, undefined)
+  const commands = runtimeCommandPort()
+  // Send only the changes the updater intended. Comparing against the later
+  // config snapshot would undo another page's intervening, unrelated edits.
+  if (config.categories) {
+    for (const category of settings.categories) {
+      const previous = before.categories.find((c) => c.id === category.id)
+      if (
+        !previous ||
+        (previous.enabled === category.enabled &&
+          JSON.stringify(previous.disabledSites ?? []) ===
+            JSON.stringify(category.disabledSites ?? []))
+      )
+        continue
+      const result = await commands.send({
+        type: 'set-category',
+        id: category.id,
+        enabled: category.enabled,
+        disabledSites: category.disabledSites ?? [],
+      })
+      if (!result.ok || result.outcome.kind === 'missing')
+        throw new Error('Could not save category.')
+    }
+  }
+  if (config.maxBypasses !== undefined && before.maxBypasses !== settings.maxBypasses) {
+    const result = await commands.send({
+      type: 'set-bypass-budget',
+      maxBypasses: settings.maxBypasses,
+    })
+    if (!result.ok) throw new Error('Could not save bypass budget.')
+  }
+  // The remaining legacy fields keep their current writer until #6/#9/#12.
+  await chrome.storage.local.set({ [STORAGE_KEY]: settings })
 }
 
 // Queued update to prevent race conditions
@@ -81,8 +115,8 @@ export async function updateSettings(
     .then(async () => {
       const current = await getSettings()
       const updated = updater(current)
-      await saveSettings(updated)
-      return updated
+      await saveSettings(updated, current)
+      return getSettings()
     })
     .catch(async (error) => {
       console.error('Sordino: Error updating settings', error)
@@ -94,13 +128,18 @@ export async function updateSettings(
 }
 
 export function subscribeToSettings(callback: (settings: SordinoSettings) => void): () => void {
+  let active = true
   const listener = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
-    if (areaName === 'local' && changes[STORAGE_KEY]) {
-      // Merge with defaults to handle new fields
-      callback(mergeWithDefaults(changes[STORAGE_KEY].newValue))
+    if (areaName === 'local' && (changes[STORAGE_KEY] || changes.config)) {
+      void getSettings().then((settings) => {
+        if (active) callback(settings)
+      })
     }
   }
 
   chrome.storage.onChanged.addListener(listener)
-  return () => chrome.storage.onChanged.removeListener(listener)
+  return () => {
+    active = false
+    chrome.storage.onChanged.removeListener(listener)
+  }
 }

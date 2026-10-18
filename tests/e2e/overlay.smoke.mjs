@@ -12,7 +12,7 @@
 // Usage: node tests/e2e/overlay.smoke.mjs [distDir]   (default: .output/chrome-mv3)
 // Env:   see harness.mjs
 import { createServer } from 'node:http'
-import { builtExtension, collectErrors, launchExtension } from './harness.mjs'
+import { builtExtension, collectErrors, installedWelcome, launchExtension } from './harness.mjs'
 
 const { dist: DIST, manifest } = builtExtension()
 const HOST = 'www.reddit.com' // in DEFAULT_CATEGORIES (social), so muted while muting is in effect
@@ -37,6 +37,17 @@ const { ctx, sw, close } = await launchExtension(DIST, [
 
 let exitCode
 try {
+  // A fresh install requires the user's Start consent before any muting.
+  const welcome = await installedWelcome(ctx, `chrome-extension://${new URL(sw.url()).host}`)
+  const beforeStart = await ctx.newPage()
+  await beforeStart.goto(`http://${HOST}/`, { waitUntil: 'domcontentloaded' })
+  await beforeStart.waitForTimeout(SETTLE_MS)
+  if (await beforeStart.$(OVERLAY)) throw new Error('Fresh install muted a site before Start')
+  await beforeStart.close()
+  await welcome.getByRole('button', { name: 'Start', exact: true }).click()
+  await welcome.getByRole('heading', { name: 'Sordino follows your schedules.' }).waitFor()
+  await welcome.close()
+
   // Start Mute now from the popup, as a user would: popup -> store command ->
   // write + effects. The reply arrives once the alarms have been applied.
   const popup = await ctx.newPage()
