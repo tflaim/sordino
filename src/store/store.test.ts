@@ -687,3 +687,74 @@ describe('Sordino store', () => {
     })
   })
 })
+
+describe('Overlay commands at the store boundary', () => {
+  it('uses the canonical sender match and refuses cross-site/look-alike requests without writes', async () => {
+    const { store, storage } = await setup()
+    for (const sender of [tab, { ...tab, url: 'https://reddit.com.example.org/' }]) {
+      const { result } = await store.dispatch(
+        { type: 'record-mute', siteId: 'youtube.com', navigationId: 'visit' },
+        sender
+      )
+      expect(result).toMatchObject({ ok: false, error: { code: 'not-allowed' } })
+    }
+    expect(storage.writes).toEqual([])
+  })
+
+  it('preserves the first offer across duplicates, Pause, and worker restart; Turn back is idempotent', async () => {
+    const { store, storage, clock, popup } = await setup()
+    const record = { type: 'record-mute' as const, siteId: 'reddit.com', navigationId: 'visit-1' }
+    expect((await store.dispatch(record, tab)).result).toEqual({
+      ok: true,
+      outcome: { kind: 'recorded', offeredAt: clock.now() },
+    })
+    clock.advance(5000)
+    expect((await store.dispatch(record, tab)).result).toMatchObject({
+      ok: true,
+      outcome: { kind: 'already-recorded', offeredAt: at('2026-10-05T10:00') },
+    })
+    expect(storage.writes).toHaveLength(1)
+    await popup.send({ type: 'pause', length: '15m' })
+    const reopened = await openStore({ storage, clock: clock.now })
+    storage.writes.length = 0
+    expect((await reopened.dispatch(record, tab)).result).toMatchObject({
+      ok: true,
+      outcome: { kind: 'already-recorded' },
+    })
+    const turn = { ...record, type: 'turn-back' as const }
+    expect((await reopened.dispatch(turn, tab)).result).toEqual({
+      ok: true,
+      outcome: { kind: 'turned-back' },
+    })
+    expect((await reopened.dispatch(turn, tab)).result).toEqual({
+      ok: true,
+      outcome: { kind: 'already-turned-back' },
+    })
+    expect(storage.writes).toHaveLength(1)
+    const state = (await openReader(storage).read('state')).state
+    expect(state.muteOffers?.['tab:7']).toEqual({
+      siteId: 'reddit.com',
+      navigationId: 'visit-1',
+      offeredAt: at('2026-10-05T10:00'),
+      turnedBack: true,
+    })
+    expect(state.mode?.kind).toBe('pause')
+  })
+
+  it('refuses an offer while not muting and rejects malformed wire data', async () => {
+    const { store, storage } = await setup('2026-10-05T18:00')
+    expect(
+      (
+        await store.dispatch(
+          { type: 'record-mute', siteId: 'reddit.com', navigationId: 'visit' },
+          tab
+        )
+      ).result
+    ).toEqual({ ok: true, outcome: { kind: 'not-muted', offeredAt: null } })
+    expect(
+      (await store.dispatch({ type: 'record-mute', siteId: 'reddit.com', navigationId: '' }, tab))
+        .result
+    ).toMatchObject({ ok: false, error: { code: 'invalid-command' } })
+    expect(storage.writes).toEqual([])
+  })
+})

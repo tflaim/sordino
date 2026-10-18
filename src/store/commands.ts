@@ -19,8 +19,12 @@ export type Command =
   | { type: 'delete-schedule'; id: string }
   | { type: 'add-muted-site'; input: string }
   | { type: 'remove-muted-site'; id: string }
+  | { type: 'record-mute'; siteId: string; navigationId: string }
+  | { type: 'turn-back'; siteId: string; navigationId: string }
 
 export interface OutcomeMap {
+  'record-mute': { kind: 'recorded' | 'already-recorded' | 'not-muted'; offeredAt: number | null }
+  'turn-back': { kind: 'turned-back' | 'already-turned-back' | 'not-recorded' }
   'mute-now': { kind: 'muting'; until: number }
   pause: { kind: 'paused'; until: number }
   'back-to-schedule': { kind: 'back-to-schedule' } | { kind: 'already-on-schedule' }
@@ -53,11 +57,13 @@ export type Sender =
   | { kind: 'background' }
 
 /**
- * Which senders may run each command. Content scripts will get Record mute,
- * Turn back and Take bypass, for the muted site matching their own tab only
- * (#5, #6); everything else is for extension pages and the background.
+ * Record mute and Turn back may come from content scripts. The store checks
+ * their site against the authoritative sender URL. Take bypass comes in #6.
+ * Everything else is for extension pages and the background.
  */
-const SENDERS: { [T in Command['type']]: 'extension' } = {
+const SENDERS: { [T in Command['type']]: 'extension' | 'content' } = {
+  'record-mute': 'content',
+  'turn-back': 'content',
   'mute-now': 'extension',
   pause: 'extension',
   'back-to-schedule': 'extension',
@@ -68,7 +74,7 @@ const SENDERS: { [T in Command['type']]: 'extension' } = {
 }
 
 export function mayRun(command: Command, sender: Sender): boolean {
-  return SENDERS[command.type] === 'extension' && sender.kind !== 'tab'
+  return SENDERS[command.type] === 'content' || sender.kind !== 'tab'
 }
 
 const isLength = (v: unknown): v is Length => LENGTHS.includes(v as Length)
@@ -77,6 +83,16 @@ const isLength = (v: unknown): v is Length => LENGTHS.includes(v as Length)
 export function parseCommand(raw: unknown): Command | null {
   if (!isRecord(raw)) return null
   switch (raw.type) {
+    case 'record-mute':
+    case 'turn-back':
+      return typeof raw.siteId === 'string' &&
+        raw.siteId.length > 0 &&
+        raw.siteId.length <= 253 &&
+        typeof raw.navigationId === 'string' &&
+        raw.navigationId.length > 0 &&
+        raw.navigationId.length <= 128
+        ? { type: raw.type, siteId: raw.siteId, navigationId: raw.navigationId }
+        : null
     case 'mute-now':
     case 'pause':
       return isLength(raw.length) ? { type: raw.type, length: raw.length } : null
